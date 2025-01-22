@@ -14,5 +14,5 @@ and additional scripts, including:
 The directory `configs` contains json files describing 3 different setups used to generate the simulations.  
 The directory `prostate_data_configs` contains files necessary for running models on the real data (prostate cancer dataset [2])
 
-[1] Shafighi, Shadi Darvish, et al. "Tumoroscope: a probabilistic model for mapping cancer clones in tumor tissues"  
+[1] Shafighi, Shadi, et al. "Integrative spatial and genomic analysis of tumor heterogeneity with Tumoroscope." Nature Communications 15.1 (2024): 9343.  
 [2] Berglund, Emelie, et al. "Spatial maps of prostate cancer transcriptomes reveal an unexplored landscape of heterogeneity." *Nature communications* 9.1 (2018): 1-13.
