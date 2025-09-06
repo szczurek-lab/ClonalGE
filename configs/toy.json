@@ -1,0 +1,51 @@
+{
+    "structure":{
+          "K" : 3,
+          "S" : 50,
+          "I" : 30,
+          "g" : 10,
+          "theta" :1
+    },
+    "C_variation":{
+        "p_c_binom" : null,
+        "C":  [[0, 1, 0.5],[0, 1, 0],[0, 0, 1]],
+        "repeat": [10, 15, 5]
+    },
+    "n_variation":{
+        "n_sampling" : true,
+        "n_lambda" : 20,
+        "n" : null
+    },
+   "Z_variation":{
+         "Z" : null,
+         "avarage_clone_in_spot" : 1.5
+   },
+   "sampling":{
+      "max_iter" : 200,
+      "min_iter" : 50,
+      "burn_in" : 30,
+      "batch" : 25
+   },
+   "Gamma": {
+    "phi_gamma" : [0.005, 1],
+    "mean_read" : 40,
+    "F_epsilon" : [2, 1],
+    "F" : [10, 1],
+     "F_fraction": false,
+    "phi_gamma_selected" : [2, 1],
+    "F_epsilon_selected" : [2, 1],
+    "F_selected" : [10, 1]
+   },
+     "theta": {
+    "gamma" : 0.95,
+    "gamma_sampling" : 0.95,
+    "theta_variable" : false
+   },
+     "Y_variation": {
+    "b_alpha_shape" : 1,
+    "b_alpha_var" : 0.25,
+    "b_beta" : 3.5,
+    "p_mean" : 0.045,
+    "p_std" : 0.02
+   }
+}

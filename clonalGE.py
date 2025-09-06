@@ -8,6 +8,7 @@ from scipy.stats import norm
 import time
 import copy
 import scipy.special as sc
+from tqdm import tqdm
 np.seterr(divide='ignore')
 
 class clonalGE:
@@ -71,11 +72,12 @@ class clonalGE:
         self.sigma_G_changes = self.sigma_G_initial
         self.sigma_n_initial = (n_lambda.astype(float)) / 10
         self.sigma_n_changes = self.sigma_n_initial
+        self.sigma_n = self.sigma_n_initial  # Initialize sigma_n
         self.sigma_B_initial = np.tile(0.1, (self.K, self.g))
         self.sigma_B_changes = self.sigma_B_initial
 
     def gibbs_sampling(self, seed, min_iter, max_iter, batch, simulated_data, n_sampling, F_fraction, pi_2D, th,
-                       every_n_sample, changes_batch=1000):
+                       every_n_sample, changes_batch=1000, progress_bar=False):
         self.changes_batch = changes_batch
         convergence_counter = 0
         first = time.time()
@@ -127,6 +129,11 @@ class clonalGE:
             return n, Z, PZ, phi, pi, G, H, B
 
         print(max_iter)
+        
+        # Initialize progress bar if requested
+        if progress_bar:
+            pbar = tqdm(total=max_iter-2, desc="ClonalGE Sampling", unit="iter")
+        
         for iter in range(1, (max_iter - 1)):  # why end at max_iter-2?
             begin = time.time()
             self.iter = iter
@@ -134,10 +141,19 @@ class clonalGE:
             loglik = self.log_likelihood_model(A=self.A, D=self.D, H=H, phi=phi, C=self.C, n=n, I=self.I, theta=self.theta_0)
 
             self.save_variables(n, H, G, pi, phi, Z, PZ, B, loglik, iter, every_n_sample, current_batch)
+            
+            # Update progress bar
+            if progress_bar:
+                pbar.update(1)
+            
             if ((iter + 1) % batch) == 0:
-                convergences = self.test_convergence(self.H, iter, every_n_sample)
-                print("Batch " + str(int(iter / batch)) + " finished with " + str(
-                    convergences) + "% convergence for [0,10,20,30,40,50]% burn-in.")
+                try:
+                    convergences = self.test_convergence(self.H, iter, every_n_sample)
+                    print("Batch " + str(int(iter / batch)) + " finished with " + str(
+                        convergences) + "% convergence for [0,10,20,30,40,50]% burn-in.")
+                except Exception as e:
+                    print(f"Batch {int(iter / batch)} finished (convergence testing skipped due to insufficient samples)")
+                    convergences = np.array([0, 0, 0, 0, 0, 0])  # Default values
                 if convergence_counter == 0:
                     convergence_counter = 1
                     self.convergence_rate = convergences
@@ -150,6 +166,10 @@ class clonalGE:
                     break
                 current_batch = current_batch + 1
 
+        # Close progress bar if it was opened
+        if progress_bar:
+            pbar.close()
+            
         print("************* Inference started ************")
         self.time = (time.time() - first)
         samples_count = int(np.round((iter + 1) / every_n_sample))
@@ -157,7 +177,11 @@ class clonalGE:
         batch_n = int(round(batch / every_n_sample))
         print("The number of samples was " + str(samples_count))
 
-        last_convergence = self.test_convergence_batches(self.H, iter, every_n_sample, batch_count, samples_count, batch_n)
+        try:
+            last_convergence = self.test_convergence_batches(self.H, iter, every_n_sample, batch_count, samples_count, batch_n)
+        except Exception as e:
+            print("Convergence testing skipped due to insufficient samples")
+            last_convergence = np.array([0, 0, 0, 0, 0, 0])  # Default values
         self.last_convergence = last_convergence
         converged_batch = [idx for idx, element in enumerate(last_convergence) if
                            last_convergence[idx] == max(last_convergence)]

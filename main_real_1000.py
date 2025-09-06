@@ -12,9 +12,18 @@ import distutils.util
 import seaborn as sns; sns.set_theme(color_codes=True)
 import pre_processing
 from scipy.optimize import lsq_linear
+from scipy.optimize import minimize
+from scipy.stats import nbinom
+import warnings
+
+# Suppress specific numpy warnings that are not critical
+warnings.filterwarnings('ignore', category=RuntimeWarning, message='Mean of empty slice')
+warnings.filterwarnings('ignore', category=RuntimeWarning, message='Degrees of freedom <= 0 for slice')
+warnings.filterwarnings('ignore', category=RuntimeWarning, message='invalid value encountered in divide')
+warnings.filterwarnings('ignore', category=FutureWarning, message='The behavior of DataFrame.sum with axis=None is deprecated')
 
 def main():
-    genes_file = 'most_var_genes1000.txt'
+    genes_file = 'prostate_data_configs/prostate_top1000_genes.txt'
     plot_colors = ['b','g','r','c','m','y','k','#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22', '#17becf']
     col = ("#efefef",'#003f5c' ,'#AAAAAA' ,'#bc5090' ,'#ff6361', '#ffa600' ,"#47B39C","#74BBFB")
 
@@ -27,7 +36,9 @@ def main():
     vis_observed = bool(distutils.util.strtobool(sys.argv[5]))
     vis_results = bool(distutils.util.strtobool(sys.argv[6]))
     saved_inputs = bool(distutils.util.strtobool(sys.argv[7]))
-    seed = int(sys.argv[8])   # or random.randint(1, 1000)
+    progress_bar = bool(distutils.util.strtobool(sys.argv[8]))
+    use_negative_binomial = bool(distutils.util.strtobool(sys.argv[9]))
+    seed = int(sys.argv[10])   # or random.randint(1, 1000)
 
     if not os.path.exists(result_dir):
         os.makedirs(result_dir)
@@ -71,12 +82,12 @@ def main():
         #df of selected spots
 
         n_s_data = pd.read_csv(move_dir + data['n_variation']['n_file'],sep=',')
-        n_s_data = n_s_data[~n_s_data.isin([np.nan, np.inf, -np.inf]).any(1)]
+        n_s_data = n_s_data[~n_s_data.isin([np.nan, np.inf, -np.inf]).any(axis=1)]
         n_s_data = n_s_data.drop_duplicates()
         n_s_data = n_s_data[n_s_data['type'].str.contains('Cancer')]
         if(n_s_data.barcode.duplicated().any()==True):
             n_s_data[n_s_data.barcode.duplicated()]=np.nan
-            n_s_data = n_s_data[~n_s_data.isin([np.nan, np.inf, -np.inf]).any(1)]
+            n_s_data = n_s_data[~n_s_data.isin([np.nan, np.inf, -np.inf]).any(axis=1)]
             print("There are duplications in the barcode(probably different types)")
   
         st_wes_selected_spots = st_wes[st_wes['spot'].isin(n_s_data['barcode'])]
@@ -116,12 +127,27 @@ def main():
 
         exs = []
         for section in sections_n_file:
+            print(f"DEBUG: Processing section {section}")
             expr_data = pd.read_csv(move_dir + data['expression'][section], delimiter="\t", index_col=0)
+            print(f"DEBUG: Loaded expression data shape: {expr_data.shape}")
+            print(f"DEBUG: Expression data columns (first 5): {expr_data.columns[:5].tolist()}")
+            
             in_section = n_s_data[n_s_data['section']==section]
-            coordinates = expr_data.columns.intersection(in_section['coordinates'])
-            expr_data = expr_data[coordinates]
-            d = {c:b for c, b in zip(in_section.coordinates, in_section.barcode)}
-            expr_data = expr_data.rename(columns=d)
+            print(f"DEBUG: Cell count data for {section}: {len(in_section)} spots")
+            print(f"DEBUG: Cell count coordinates (first 5): {in_section['coordinates'].head().tolist()}")
+            
+            # Match barcodes instead of coordinates
+            matching_barcodes = expr_data.columns.intersection(in_section['barcode'])
+            print(f"DEBUG: Matching barcodes: {len(matching_barcodes)} out of {len(expr_data.columns)}")
+            
+            if len(matching_barcodes) == 0:
+                print(f"ERROR: No matching barcodes found for section {section}!")
+                print(f"Expression data columns (first 5): {expr_data.columns[:5].tolist()}")
+                print(f"Cell count barcodes (first 5): {in_section['barcode'].head().tolist()}")
+                raise ValueError(f"No matching barcodes for section {section}")
+            
+            expr_data = expr_data[matching_barcodes]
+            # No need to rename columns since they already match
             exs.append(expr_data)
         expr_data = pd.concat(exs, axis=1).dropna()
         expr_data = expr_data[expr_data.sum(axis=1)>0]   # excluding genes with expression = 0
@@ -131,7 +157,23 @@ def main():
         with open(genes_file) as f:
             genes = f.readlines()
             genes = [gene.strip() for gene in genes]
-        expr_data = expr_data.loc[genes]
+        
+        print(f"DEBUG: Loaded {len(genes)} genes from {genes_file}")
+        print(f"DEBUG: First 5 genes: {genes[:5]}")
+        print(f"DEBUG: Expression data shape before filtering: {expr_data.shape}")
+        print(f"DEBUG: Expression data index (first 5): {expr_data.index[:5].tolist()}")
+        
+        # Check which genes are actually in the expression data
+        available_genes = [gene for gene in genes if gene in expr_data.index]
+        print(f"DEBUG: {len(available_genes)} out of {len(genes)} genes are available in expression data")
+        
+        if len(available_genes) == 0:
+            print("ERROR: No genes from the gene list are found in expression data!")
+            print("Available genes in expression data (first 10):", expr_data.index[:10].tolist())
+            print("Genes in gene list (first 10):", genes[:10])
+            raise ValueError("Gene list mismatch!")
+        
+        expr_data = expr_data.loc[available_genes]
         sections_array = np.array(expr_data.columns.str[:4])
         Y = np.array(expr_data)
         Y = Y.T
@@ -210,7 +252,7 @@ def main():
         vis_1.gamma(np.array(data['Gamma']['phi_gamma'])[0], np.array(data['Gamma']['phi_gamma'])[1], 'Phi')
         vis_1.heatmap_seaborn(C_ik.to_numpy(), 'C_seaborn', 'clones', 'mutations', False, 0.5)
         g = sns.clustermap(C_ik, cmap="Blues")
-        g.ax_row_dendrogram.set_xlim([0, 0])
+        g.ax_row_dendrogram.set_xlim([-0.1, 0.1])  # Small offset to prevent identical xlims
         g.savefig(result_dir + "/C_ik_clustered.png")
 
 
@@ -235,14 +277,88 @@ def main():
         return pred_p, pred_alpha, pred_beta, 1 / scaling_factors_array
 
     def calc_B(Y, H, N):
+        """Calculate B matrix using linear regression (Tumoroscope+LR approach)"""
         K = H.shape[1]
         G = Y.shape[1]
         N = N * np.eye(len(N))
         X = np.matmul(N,H)
         B = np.zeros((K,G))
         for g in range(G):
-            if sum(Y[:,g]) > 0:
+            if Y[:,g].sum() > 0:
                 B[:,g] = lsq_linear(X, Y[:,g], bounds=(0, np.inf)).x
+        return B
+    
+    def calc_B_negative_binomial(Y, H, N):
+        """Calculate B matrix using negative binomial regression (Tumoroscope+NB approach)"""
+        K = H.shape[1]
+        G = Y.shape[1]
+        S = Y.shape[0]
+        B = np.zeros((K, G))
+        
+        # Create design matrix: X = N * H (cell counts × clone proportions)
+        X = np.zeros((S, K))
+        for s in range(S):
+            for k in range(K):
+                X[s, k] = N[s] * H[s, k]
+        
+        for g in range(G):
+            if Y[:, g].sum() > 0:
+                y_g = Y[:, g]
+                
+                # Negative binomial regression: Y ~ NB(mean, dispersion)
+                # where mean = X * B and we need to estimate B and dispersion
+                
+                def neg_binom_loglik(params):
+                    """Negative log-likelihood for negative binomial regression"""
+                    B_g = params[:K]  # Clone-specific expression for gene g
+                    r = params[K]     # Dispersion parameter (r > 0)
+                    
+                    # Ensure non-negative expression and positive dispersion
+                    if np.any(B_g < 0) or r <= 0:
+                        return 1e10
+                    
+                    # Calculate mean expression for each spot
+                    mu = np.dot(X, B_g)
+                    
+                    # Avoid numerical issues
+                    mu = np.maximum(mu, 1e-6)
+                    
+                    # Negative binomial log-likelihood
+                    # P(Y=y) = Γ(y+r)/(Γ(r)Γ(y+1)) * (r/(r+μ))^r * (μ/(r+μ))^y
+                    try:
+                        # Using scipy's negative binomial PMF
+                        loglik = 0
+                        for s in range(S):
+                            if y_g[s] >= 0:  # Only for non-negative counts
+                                loglik += nbinom.logpmf(y_g[s], r, r/(r + mu[s]))
+                        return -loglik  # Return negative log-likelihood for minimization
+                    except:
+                        return 1e10
+                
+                # Initial parameters: B from linear regression, r=1
+                try:
+                    # Get initial B from linear regression
+                    B_init = lsq_linear(X, y_g, bounds=(0, np.inf)).x
+                    r_init = 1.0
+                    initial_params = np.concatenate([B_init, [r_init]])
+                    
+                    # Bounds: B >= 0, r > 0
+                    bounds = [(0, None)] * K + [(1e-6, None)]
+                    
+                    # Optimize
+                    result = minimize(neg_binom_loglik, initial_params, bounds=bounds, 
+                                    method='L-BFGS-B', options={'maxiter': 1000})
+                    
+                    if result.success:
+                        B[:, g] = result.x[:K]
+                    else:
+                        # Fallback to linear regression if NB regression fails
+                        B[:, g] = lsq_linear(X, y_g, bounds=(0, np.inf)).x
+                        
+                except Exception as e:
+                    # Fallback to linear regression if anything goes wrong
+                    B[:, g] = lsq_linear(X, y_g, bounds=(0, np.inf)).x
+        
         return B
 
     result_txt = result_dir + '/' + data['results']['text_result'] + data['structure']['section'] + '.txt'
@@ -254,6 +370,8 @@ def main():
         S = len(n_s_data['barcode'])
         g = Y.shape[1]
         print(f'running on {K} clones, {S} spots and {g} genes')
+        print(f'Configuration: min_iter={data["sampling"]["min_iter"]}, max_iter={data["sampling"]["max_iter"]}, batch={data["sampling"]["batch"]}')
+        print(f'This will take approximately {data["sampling"]["max_iter"]/data["sampling"]["batch"]} batches')
         pred_p, pred_alpha, pred_beta, pred_t = estimate_parameters(Y, n_s_data['nuclei'].astype(float), sections_array)
         print('pred_p:', np.min(pred_p), '-', np.max(pred_p))
         print('pred_alpha:', np.min(pred_alpha), '-', np.max(pred_alpha))
@@ -267,17 +385,24 @@ def main():
                                 gamma=data['theta']['gamma'], pi_2D=data['structure']['pi_2D'],
                                 result_txt=result_txt, rp_est_method='my')
 
-        tum_0.gibbs_sampling(seed=seed, min_iter=int(np.int(data['sampling']['min_iter'])/1.5), 
-                             max_iter=int(np.int(data['sampling']['max_iter'])/2), 
-                             burn_in=np.int(data['sampling']['burn_in']), batch=np.int(data['sampling']['batch']),
+        tum_0.gibbs_sampling(seed=seed, min_iter=int(int(data['sampling']['min_iter'])/1.5), 
+                             max_iter=int(int(data['sampling']['max_iter'])/2), 
+                             burn_in=int(data['sampling']['burn_in']), batch=int(data['sampling']['batch']),
                              simulated_data=None, n_sampling=data['n_variation']['n_sampling'], 
                              F_fraction=data['Gamma']['F_fraction'], theta_variable=data['theta']['theta_variable'],
                              pi_2D=data['structure']['pi_2D'], th=data['Z_variation']['threshold'], 
                              every_n_sample=data['sampling']['every_n_sample'], 
                              changes_batch=data['sampling']['changes_batch'], 
-                             var_calculation=False)
+                             var_calculation=False, progress_bar=progress_bar)
 
-        B = calc_B(Y, tum_0.inferred_H, tum_0.inferred_n)
+        # Choose regression method based on parameter
+        if use_negative_binomial:
+            print("Using Negative Binomial regression for gene expression prediction...")
+            B = calc_B_negative_binomial(Y, tum_0.inferred_H, tum_0.inferred_n)
+        else:
+            print("Using Linear regression for gene expression prediction...")
+            B = calc_B(Y, tum_0.inferred_H, tum_0.inferred_n)
+        
         inits = (tum_0.inferred_n, tum_0.inferred_H, tum_0.inferred_G, tum_0.inferred_pi, tum_0.inferred_phi, tum_0.inferred_Z, B)
 
 
@@ -288,12 +413,12 @@ def main():
                       pi_2D=data['structure']['pi_2D'],result_txt=result_txt,
                       Y=Y, p_y=pred_p, b_alpha=pred_alpha, b_beta=pred_beta, t=pred_t, inits=inits)
 
-        cl.gibbs_sampling(seed=seed, min_iter=np.int(data['sampling']['min_iter']),
-                          max_iter=np.int(data['sampling']['max_iter']), batch=np.int(data['sampling']['batch']),
+        cl.gibbs_sampling(seed=seed, min_iter=int(data['sampling']['min_iter']),
+                          max_iter=int(data['sampling']['max_iter']), batch=int(data['sampling']['batch']),
                           simulated_data=None, n_sampling=data['n_variation']['n_sampling'],
                           F_fraction=data['Gamma']['F_fraction'], pi_2D=data['structure']['pi_2D'],
                           th=data['Z_variation']['threshold'], every_n_sample=data['sampling']['every_n_sample'],
-                          changes_batch=data['sampling']['changes_batch'])
+                          changes_batch=data['sampling']['changes_batch'], progress_bar=progress_bar)
         pickle.dump(cl, open(result_obj, 'wb'))
     else:
         print("loading existing object")

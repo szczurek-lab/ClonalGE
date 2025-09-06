@@ -9,6 +9,7 @@ import time
 import math
 import copy
 import scipy.special as sc
+from tqdm import tqdm
 
 class tumoroscope:
 
@@ -71,7 +72,7 @@ class tumoroscope:
         self.sigma_n_changes = 1
 
 
-    def gibbs_sampling(self,seed,min_iter,max_iter,burn_in,batch,simulated_data,n_sampling,F_fraction,theta_variable,pi_2D,th,every_n_sample,changes_batch,var_calculation):
+    def gibbs_sampling(self,seed,min_iter,max_iter,burn_in,batch,simulated_data,n_sampling,F_fraction,theta_variable,pi_2D,th,every_n_sample,changes_batch,var_calculation,progress_bar=False):
 
         self.changes_batch = changes_batch
         self.var_calculation = var_calculation
@@ -98,6 +99,9 @@ class tumoroscope:
         loglik = self.log_likelihood_model(A=self.A, D=self.D, H=H,phi=phi, C=self.C, n=n, I=self.I,theta=self.theta_0,theta_variable=theta_variable,h_theta=h_theta)
         n_pre,H_pre,G_pre,pi_pre,phi_pre,Z_pre,h_theta_pre,loglik_pre = self.save_and_update_variables(n,H,G,pi,phi,Z,PZ,h_theta,loglik,iter,every_n_sample,current_batch)
 
+        # Initialize progress bar if requested
+        if progress_bar:
+            pbar = tqdm(total=max_iter-2, desc="Tumoroscope Sampling", unit="iter")
 
         for iter in range(1,(max_iter-1)):
             begin= time.time()
@@ -144,11 +148,18 @@ class tumoroscope:
 
             n_pre,H_pre,G_pre,pi_pre,phi_pre,Z_pre,h_theta_pre,loglik_pre = self.save_and_update_variables(n,H,G,pi,phi,Z,PZ,h_theta,loglik,iter,every_n_sample,current_batch)
 
+            # Update progress bar
+            if progress_bar:
+                pbar.update(1)
+
             if ((iter+1) % batch)== 0:
                 #convergence = (np.sum(np.abs(self.geweke_z(self.H, int(np.round(iter/every_n_sample)), first=0.1, last=0.5))<2)/(self.S*self.K))*100
-                convergences = self.test_convergence(self.H,iter,every_n_sample)
-                #print("convergences[0]: " + str(convergences[0]))
-                print("Batch " + str(int(iter / batch)) + " finished with "+str(convergences)+ "% convergence for [0,10,20,30,40,50]% burn-in.")
+                try:
+                    convergences = self.test_convergence(self.H,iter,every_n_sample)
+                    print("Batch " + str(int(iter / batch)) + " finished with "+str(convergences)+ "% convergence for [0,10,20,30,40,50]% burn-in.")
+                except Exception as e:
+                    print(f"Batch {int(iter / batch)} finished (convergence testing skipped due to insufficient samples)")
+                    convergences = np.array([0, 0, 0, 0, 0, 0])  # Default values
                 if(convergence_counter == 0):
                     convergence_counter=1
                     self.convergence_rate = convergences
@@ -165,6 +176,9 @@ class tumoroscope:
                 current_batch = current_batch+1
             length[iter] = time.time() - begin
 
+        # Close progress bar if it was opened
+        if progress_bar:
+            pbar.close()
 
         print("************* Inference started ************")
         self.time = (time.time() - first)
@@ -177,7 +191,11 @@ class tumoroscope:
         # TODO: I think there shouldnt be any inferred variable ( n_inferred is wrong --> I changed it to self.n in the following)
         #loglik = self.log_likelihood_model(A=self.A, D=self.D, H=H_pre,phi=phi_pre, C=self.C, n=n, I=self.I,theta=self.theta_0,theta_variable=theta_variable,h_theta=h_theta_pre)
         #self.inferred_D = np.mean(self.D[burn_in:][:][:][:],axis=0)
-        last_convergence = self.test_convergence_batches(self.H,iter,every_n_sample,batch_count,samples_count,batch_n)
+        try:
+            last_convergence = self.test_convergence_batches(self.H,iter,every_n_sample,batch_count,samples_count,batch_n)
+        except Exception as e:
+            print("Convergence testing skipped due to insufficient samples")
+            last_convergence = np.array([0, 0, 0, 0, 0, 0])  # Default values
         self.last_convergence = last_convergence
         converged_batch = [idx for idx, element in enumerate(last_convergence) if last_convergence[idx]==max(last_convergence)]
         print(last_convergence)

@@ -188,8 +188,8 @@ def generate_A_D(st_wes,offset,spots_order):
     for mutation in st_wes.groupby([mut_id,'spot']).groups:
          #print(mut_id)
         reads = st_wes[np.logical_and(st_wes[mut_id] == mutation[0],st_wes['spot'] == mutation[1])]
-        ref = (reads[reads['refAllele'] == reads['base']].cnt.sum())
-        alt = (reads[reads['refAllele'] != reads['base']].cnt.sum())
+        ref = (reads[reads['refAllele'] == reads['base']].cnt.sum(axis=0))
+        alt = (reads[reads['refAllele'] != reads['base']].cnt.sum(axis=0))
         A_df.append([mutation[0], mutation[1], alt])
         D_df.append([mutation[0], mutation[1], ref + alt])
 
@@ -314,7 +314,7 @@ def generate_n_lambda(file,sections_n_file,barcode,n_sampling):
         n_s_data = n_barcode_merge(file,sections_n_file,barcode)
         print("generate_n_lambda - number of Nans/Infs:")
         print(np.sum(n_s_data.isin([np.nan, np.inf, -np.inf])))
-        n_s_data = n_s_data[~n_s_data.isin([np.nan, np.inf, -np.inf]).any(1)]
+        n_s_data = n_s_data[~n_s_data.isin([np.nan, np.inf, -np.inf]).any(axis=1)]
         #n_s_data = np.unique(n_s_data['barcode'])
         print(n_s_data[n_s_data['barcode'].duplicated()])
         spots_order = n_s_data['barcode']

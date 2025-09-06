@@ -1,0 +1,14 @@
+# Ignore system files
+.DS_Store
+
+# Ignore caches and temp files
+__pycache__/
+*.pickle
+
+# Ignore data/config directories
+example_cancer_data/
+prostate_data_configs/
+prostate_medium_test/
+prostate_results/
+prostate_test/
+

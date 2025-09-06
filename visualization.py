@@ -782,5 +782,5 @@ class visualization:
                                         orientation='vertical')
         cb1.set_label('Fraction')
 
-        plt.savefig(self.dir + '/Per_clone_' +section + '_H.png', dpi=100,figsize=(8, 6))
+        plt.savefig(self.dir + '/Per_clone_' +section + '_H.png', dpi=100)
         plt.close()
