@@ -158,7 +158,7 @@ def main():
             np.savetxt(m_file, np.unique(A_df["i"]), fmt='%s')
             expr_data.to_csv(result_dir+'/expr.csv', index=True,sep='\t')
 
-        n_s_data['nuclei'][n_s_data['nuclei']==0]=1
+        n_s_data.loc[n_s_data['nuclei']==0, 'nuclei'] = 1
 
         A_df = A_df[A_df['s'].isin(A.columns)]
         A_df = A_df[A_df['i'].isin(A.index)]
@@ -267,9 +267,9 @@ def main():
                                 gamma=data['theta']['gamma'], pi_2D=data['structure']['pi_2D'],
                                 result_txt=result_txt, rp_est_method='my')
 
-        tum_0.gibbs_sampling(seed=seed, min_iter=int(np.int(data['sampling']['min_iter'])/1.5), 
-                             max_iter=int(np.int(data['sampling']['max_iter'])/2), 
-                             burn_in=np.int(data['sampling']['burn_in']), batch=np.int(data['sampling']['batch']),
+        tum_0.gibbs_sampling(seed=seed, min_iter=int(int(data['sampling']['min_iter'])/1.5),
+                             max_iter=int(int(data['sampling']['max_iter'])/2),
+                             burn_in=int(data['sampling']['burn_in']), batch=int(data['sampling']['batch']),
                              simulated_data=None, n_sampling=data['n_variation']['n_sampling'], 
                              F_fraction=data['Gamma']['F_fraction'], theta_variable=data['theta']['theta_variable'],
                              pi_2D=data['structure']['pi_2D'], th=data['Z_variation']['threshold'], 
@@ -288,8 +288,8 @@ def main():
                       pi_2D=data['structure']['pi_2D'],result_txt=result_txt,
                       Y=Y, p_y=pred_p, b_alpha=pred_alpha, b_beta=pred_beta, t=pred_t, inits=inits)
 
-        cl.gibbs_sampling(seed=seed, min_iter=np.int(data['sampling']['min_iter']),
-                          max_iter=np.int(data['sampling']['max_iter']), batch=np.int(data['sampling']['batch']),
+        cl.gibbs_sampling(seed=seed, min_iter=int(data['sampling']['min_iter']),
+                          max_iter=int(data['sampling']['max_iter']), batch=int(data['sampling']['batch']),
                           simulated_data=None, n_sampling=data['n_variation']['n_sampling'],
                           F_fraction=data['Gamma']['F_fraction'], pi_2D=data['structure']['pi_2D'],
                           th=data['Z_variation']['threshold'], every_n_sample=data['sampling']['every_n_sample'],
