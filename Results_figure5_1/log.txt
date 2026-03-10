@@ -1,0 +1,3 @@
+The config file is: prostate_data_configs/config_selected_spots_any_mutations_prostate.json
+seed: 1
+######################  pre processing started: preparing observed variables ####################
