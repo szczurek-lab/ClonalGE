@@ -4,14 +4,16 @@
 # for ClonalGE and Tumoroscope+LR on prostate cancer data.
 #
 # Usage:
-#   bash run_figure5.sh [NUM_RUNS] [START_SEED]
-#   NUM_RUNS  — number of independent runs (default: 20, paper used 100)
+#   bash run_figure5.sh [NUM_RUNS] [START_SEED] [N_JOBS]
+#   NUM_RUNS   — number of independent runs (default: 20, paper used 100)
 #   START_SEED — starting random seed (default: 1)
+#   N_JOBS     — number of parallel jobs (default: number of CPU cores)
 
 set -e
 
 NUM_RUNS=${1:-20}
 START_SEED=${2:-1}
+N_JOBS=${3:-$(nproc 2>/dev/null || sysctl -n hw.logicalcpu 2>/dev/null || echo 4)}
 CONFIG="prostate_data_configs/config_selected_spots_any_mutations_prostate.json"
 RESULT_PREFIX="Results_figure5"
 
@@ -46,26 +48,33 @@ if [ $MISSING -eq 1 ]; then
 fi
 
 echo "All input data files found."
-echo "Running $NUM_RUNS independent runs (seeds $START_SEED to $((START_SEED + NUM_RUNS - 1)))..."
+echo "Running $NUM_RUNS independent runs (seeds $START_SEED to $((START_SEED + NUM_RUNS - 1))) with $N_JOBS parallel jobs..."
 echo ""
 
-# --- Run ClonalGE on real prostate data ---
-# Args: result_dir  config  run_sampling  save_obs  vis_obs  vis_results  saved_inputs  seed
-for i in $(seq $START_SEED $((START_SEED + NUM_RUNS - 1))); do
-    RESULT_DIR="${RESULT_PREFIX}_${i}"
-    echo "=== Run $i / $NUM_RUNS  ->  $RESULT_DIR ==="
+# --- Run first job sequentially to save observed data and pickles ---
+FIRST_DIR="${RESULT_PREFIX}_${START_SEED}"
+echo "=== Run $START_SEED / $NUM_RUNS  ->  $FIRST_DIR (preprocessing) ==="
+python main_real_1000.py "$FIRST_DIR" "$CONFIG" True True True True False $START_SEED
+echo "=== Run $START_SEED done ==="
+echo ""
 
-    # First run: save observed data + visualize. Subsequent: reuse saved inputs.
-    if [ $i -eq $START_SEED ]; then
-        python main_real_1000.py "$RESULT_DIR" "$CONFIG" True True True True False $i
-    else
-        python main_real_1000.py "$RESULT_DIR" "$CONFIG" True False False True False $i
-    fi
-
+# --- Run remaining jobs in parallel ---
+run_job() {
+    local i=$1
+    local RESULT_DIR="${RESULT_PREFIX}_${i}"
+    echo "=== Starting Run $i  ->  $RESULT_DIR ==="
+    python main_real_1000.py "$RESULT_DIR" "$CONFIG" True False False True False $i
     echo "=== Run $i done ==="
-    echo ""
-done
+}
+export -f run_job
+export CONFIG RESULT_PREFIX
 
+END_SEED=$((START_SEED + NUM_RUNS - 1))
+if [ $END_SEED -gt $START_SEED ]; then
+    seq $((START_SEED + 1)) $END_SEED | xargs -P "$N_JOBS" -I{} bash -c 'run_job "$@"' _ {}
+fi
+
+echo ""
 echo "All $NUM_RUNS runs complete. Results in ${RESULT_PREFIX}_*/"
 echo ""
 echo "To select the best run (highest likelihood) and generate Figure 5,"
