@@ -314,7 +314,7 @@ def generate_n_lambda(file,sections_n_file,barcode,n_sampling):
         n_s_data = n_barcode_merge(file,sections_n_file,barcode)
         print("generate_n_lambda - number of Nans/Infs:")
         print(np.sum(n_s_data.isin([np.nan, np.inf, -np.inf])))
-        n_s_data = n_s_data[~n_s_data.isin([np.nan, np.inf, -np.inf]).any(1)]
+        n_s_data = n_s_data[~n_s_data.isin([np.nan, np.inf, -np.inf]).any(axis=1)]
         #n_s_data = np.unique(n_s_data['barcode'])
         print(n_s_data[n_s_data['barcode'].duplicated()])
         spots_order = n_s_data['barcode']

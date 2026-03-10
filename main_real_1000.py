@@ -71,12 +71,12 @@ def main():
         #df of selected spots
 
         n_s_data = pd.read_csv(move_dir + data['n_variation']['n_file'],sep=',')
-        n_s_data = n_s_data[~n_s_data.isin([np.nan, np.inf, -np.inf]).any(1)]
+        n_s_data = n_s_data[~n_s_data.isin([np.nan, np.inf, -np.inf]).any(axis=1)]
         n_s_data = n_s_data.drop_duplicates()
         n_s_data = n_s_data[n_s_data['type'].str.contains('Cancer')]
         if(n_s_data.barcode.duplicated().any()==True):
             n_s_data[n_s_data.barcode.duplicated()]=np.nan
-            n_s_data = n_s_data[~n_s_data.isin([np.nan, np.inf, -np.inf]).any(1)]
+            n_s_data = n_s_data[~n_s_data.isin([np.nan, np.inf, -np.inf]).any(axis=1)]
             print("There are duplications in the barcode(probably different types)")
   
         st_wes_selected_spots = st_wes[st_wes['spot'].isin(n_s_data['barcode'])]
