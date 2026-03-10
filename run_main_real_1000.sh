@@ -7,14 +7,16 @@ CONFIG="prostate_data_configs/config_selected_spots_any_mutations_prostate.json"
 
 echo "Running 100 independent runs with $N_JOBS parallel jobs..."
 
-run_job() {
-    local i=$1
-    python main_real_1000.py Results_real_data_$i \
-        prostate_data_configs/config_selected_spots_any_mutations_prostate.json \
-        True True True True False $i
-}
-export -f run_job
+running=0
+for i in $(seq 1 100); do
+    python main_real_1000.py Results_real_data_$i "$CONFIG" True True True True False $i &
 
-seq 1 100 | xargs -P "$N_JOBS" -I{} bash -c 'run_job "$@"' _ {}
+    running=$((running + 1))
+    if [ $running -ge $N_JOBS ]; then
+        wait
+        running=0
+    fi
+done
 
+wait
 echo "All 100 runs complete."

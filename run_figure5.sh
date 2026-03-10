@@ -1,7 +1,5 @@
 #!/bin/bash
 # Run ClonalGE on real prostate data to regenerate Figure 5 results.
-# Figure 5: Y_validation — comparison of reconstructed vs observed gene expression
-# for ClonalGE and Tumoroscope+LR on prostate cancer data.
 #
 # Usage:
 #   bash run_figure5.sh [NUM_RUNS] [START_SEED] [N_JOBS]
@@ -19,7 +17,6 @@ RESULT_PREFIX="Results_figure5"
 
 # --- Check required data files ---
 MISSING=0
-
 for f in \
     prostate_data_configs/vardict2_st_calling/vardict2_1.2.ac \
     prostate_data_configs/vardict2_st_calling/vardict2_2.4.ac \
@@ -39,16 +36,12 @@ for f in \
 done
 
 if [ $MISSING -eq 1 ]; then
-    echo ""
-    echo "ERROR: Some required data files are missing (listed above)."
-    echo "These are the raw prostate cancer data files from Berglund et al. 2018."
-    echo "They are not in the git repository. Please obtain them and place them"
-    echo "in the paths shown above, then re-run this script."
+    echo "ERROR: Some required data files are missing. See above."
     exit 1
 fi
 
 echo "All input data files found."
-echo "Running $NUM_RUNS independent runs (seeds $START_SEED to $((START_SEED + NUM_RUNS - 1))) with $N_JOBS parallel jobs..."
+echo "Running $NUM_RUNS independent runs with $N_JOBS parallel jobs..."
 echo ""
 
 # --- Run first job sequentially to save observed data and pickles ---
@@ -58,25 +51,22 @@ python main_real_1000.py "$FIRST_DIR" "$CONFIG" True True True True False $START
 echo "=== Run $START_SEED done ==="
 echo ""
 
-# --- Run remaining jobs in parallel ---
-run_job() {
-    local i=$1
-    local RESULT_DIR="${RESULT_PREFIX}_${i}"
-    echo "=== Starting Run $i  ->  $RESULT_DIR ==="
-    python main_real_1000.py "$RESULT_DIR" "$CONFIG" True False False True False $i
-    echo "=== Run $i done ==="
-}
-export -f run_job
-export CONFIG RESULT_PREFIX
-
+# --- Run remaining jobs in parallel using & ---
 END_SEED=$((START_SEED + NUM_RUNS - 1))
-if [ $END_SEED -gt $START_SEED ]; then
-    seq $((START_SEED + 1)) $END_SEED | xargs -P "$N_JOBS" -I{} bash -c 'run_job "$@"' _ {}
-fi
+running=0
 
+for i in $(seq $((START_SEED + 1)) $END_SEED); do
+    RESULT_DIR="${RESULT_PREFIX}_${i}"
+    echo "=== Starting Run $i  ->  $RESULT_DIR ==="
+    python main_real_1000.py "$RESULT_DIR" "$CONFIG" True False False True False $i &
+
+    running=$((running + 1))
+    if [ $running -ge $N_JOBS ]; then
+        wait
+        running=0
+    fi
+done
+
+wait
 echo ""
 echo "All $NUM_RUNS runs complete. Results in ${RESULT_PREFIX}_*/"
-echo ""
-echo "To select the best run (highest likelihood) and generate Figure 5,"
-echo "compare log-likelihoods across runs and use the best chain's inferred"
-echo "H, B, and N to compute Y_hat = t * N * H * B vs observed Y."
