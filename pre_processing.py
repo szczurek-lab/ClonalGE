@@ -223,7 +223,7 @@ def plot_prior_inferred_n(n_lambda, inferred_n, section, visualization_dir):
     plt.savefig(visualization_dir + '/' + section + '_n_inferred.png', dpi=500)
     plt.close()
 
-    plt.style.use('seaborn-deep')
+    plt.style.use('seaborn-v0_8-deep' if 'seaborn-v0_8-deep' in plt.style.available else 'default')
     n_lists = [list(n_lambda), np.array(inferred_n.transpose()).tolist()]
     bins = np.linspace(0, np.max(n_lists), 30)
     plt.hist(n_lists, label=['Lambda', 'Inferred n'])

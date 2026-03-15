@@ -668,7 +668,9 @@ class clonalGE:
 
         file1.write("\n\nInferred HZ:\n")
         inferred_HZ = self.inferred_H * self.inferred_Z
-        inferred_HZ = inferred_HZ / np.transpose(np.tile(inferred_HZ.sum(axis=1), (len(self.inferred_H[0]), 1)))
+        row_sums = inferred_HZ.sum(axis=1)
+        row_sums[row_sums == 0] = 1
+        inferred_HZ = inferred_HZ / np.transpose(np.tile(row_sums, (len(self.inferred_H[0]), 1)))
         np.savetxt(file1, inferred_HZ, fmt='%.3f')
 
         file1.write("\nInferred Probability of Z:\n")
