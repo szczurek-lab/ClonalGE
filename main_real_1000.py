@@ -10,7 +10,7 @@ import pandas as pd
 import json
 import sys
 import distutils.util
-from multiprocessing import Pool
+from multiprocessing import get_context
 import seaborn as sns; sns.set_theme(color_codes=True)
 import pre_processing
 from scipy.optimize import lsq_linear
@@ -311,7 +311,7 @@ def main():
                               Y=Y, p_y=pred_p, b_alpha=pred_alpha, b_beta=pred_beta, t=pred_t, inits=inits)
             cl_objs.append((cl_obj, chain_params))
 
-        with Pool(constants.CORES) as pool:
+        with get_context('spawn').Pool(constants.CORES) as pool:
             cl_all = pool.map(run_in_parallel, cl_objs)
 
         for cc, c in enumerate(cl_all):
