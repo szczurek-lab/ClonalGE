@@ -296,9 +296,9 @@ def main():
             th=data['Z_variation']['threshold'], every_n_sample=data['sampling']['every_n_sample'],
             changes_batch=data['sampling']['changes_batch'])
 
+        B = calc_B(Y, tum_0.inferred_H, tum_0.inferred_n)
         cl_objs = []
         for cc in range(constants.CHAINS):
-            B = calc_B(Y, tum_0.inferred_H, tum_0.inferred_n)
             inits = (tum_0.inferred_n, tum_0.inferred_H, tum_0.inferred_G,
                      tum_0.inferred_pi, tum_0.inferred_phi, tum_0.inferred_Z, B)
             chain_params = dict(gibbs_params, seed=seed + cc)
@@ -311,7 +311,7 @@ def main():
                               Y=Y, p_y=pred_p, b_alpha=pred_alpha, b_beta=pred_beta, t=pred_t, inits=inits)
             cl_objs.append((cl_obj, chain_params))
 
-        with get_context('spawn').Pool(constants.CORES) as pool:
+        with get_context('forkserver').Pool(constants.CORES) as pool:
             cl_all = pool.map(run_in_parallel, cl_objs)
 
         for cc, c in enumerate(cl_all):

@@ -41,6 +41,7 @@ class clonalGE:
             p_y[(p_y == 1) & (np.sum(Y, axis=0) > 0)] = 0.95
             p_y[p_y == 1] = 0.999
         self.p_y = p_y
+        self.p_y_ratio = p_y / (1 - p_y)
         self.b_alpha = b_alpha
         self.b_beta = b_beta
         self.t = t
@@ -332,8 +333,8 @@ class clonalGE:
 
     def save_variables(self, n, H, G, pi, phi, Z, PZ, B, loglik, iter, every_n_sample, current_batch):
         if ((iter + 1) % every_n_sample) == 0:
-            self.H[self.iter_current] = copy.deepcopy(H)
-            self.loglik[self.iter_current] = copy.deepcopy(loglik)
+            self.H[self.iter_current] = H
+            self.loglik[self.iter_current] = loglik
             self.n_sum[current_batch] += n
             self.H_sum[current_batch] += H
             self.G_sum[current_batch] += G
@@ -449,9 +450,8 @@ class clonalGE:
         n = np.round(x)
         p_dis = self.calculate_logp_dis(D, H, phi, I, n)
 
-        r = np.matmul(H, B)
-        r = np.matmul(np.diag(n), r)
-        r = np.matmul(r, np.diag(p_y / (1 - p_y)))
+        r = n[:, None] * np.matmul(H, B)
+        r = r * self.p_y_ratio
         r = np.multiply(self.t, r)
         p_Y = scipy.stats.nbinom.logpmf(Y, r, p_y)  # Sxg
 
@@ -527,9 +527,8 @@ class clonalGE:
         p_ais = self.calculate_logp_ais(A, D, H, phi, C, theta)
         p_dis = self.calculate_logp_dis(D, H, phi, I, n)
 
-        r = np.matmul(H, B)
-        r = np.matmul(np.diag(n), r)
-        r = np.matmul(r, np.diag(p_y / (1 - p_y)))
+        r = n[:, None] * np.matmul(H, B)
+        r = r * self.p_y_ratio
         r = np.multiply(self.t, r)
         p_Y = scipy.stats.nbinom.logpmf(Y, r, p_y)  # Sxg
 
@@ -628,9 +627,8 @@ class clonalGE:
         return B
 
     def B_target_matrix(self, B, Y, H, n, p_y, b_alpha, b_beta):
-        r = np.matmul(H, B)
-        r = np.matmul(np.diag(n), r)
-        r = np.matmul(r, np.diag(p_y / (1 - p_y)))  # Sxg
+        r = n[:, None] * np.matmul(H, B)
+        r = r * self.p_y_ratio
         r = np.multiply(self.t, r)  # Sxg
         p_Y = scipy.stats.nbinom.logpmf(Y, r, p_y)  # Sxg
 
