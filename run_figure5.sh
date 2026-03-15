@@ -46,21 +46,19 @@ echo "All input data files found."
 echo "Running $NUM_RUNS independent runs with $N_JOBS parallel jobs..."
 echo ""
 
-# --- Run first job sequentially to save observed data and pickles ---
-FIRST_DIR="${RESULT_PREFIX}_${START_SEED}"
-echo "=== Run $START_SEED / $NUM_RUNS  ->  $FIRST_DIR (preprocessing) ==="
-python main_real_1000.py "$FIRST_DIR" "$CONFIG" True True True True False $START_SEED
-echo "=== Run $START_SEED done ==="
-echo ""
-
-# --- Run remaining jobs in parallel using & ---
+# --- Run all jobs in parallel ---
 END_SEED=$((START_SEED + NUM_RUNS - 1))
 running=0
 
-for i in $(seq $((START_SEED + 1)) $END_SEED); do
+for i in $(seq $START_SEED $END_SEED); do
     RESULT_DIR="${RESULT_PREFIX}_${i}"
     echo "=== Starting Run $i  ->  $RESULT_DIR ==="
-    python main_real_1000.py "$RESULT_DIR" "$CONFIG" True False False True False $i &
+    # Save observed data and visualize only for the first run (non-blocking)
+    if [ $i -eq $START_SEED ]; then
+        python main_real_1000.py "$RESULT_DIR" "$CONFIG" True True True True False $i &
+    else
+        python main_real_1000.py "$RESULT_DIR" "$CONFIG" True False False True False $i &
+    fi
 
     running=$((running + 1))
     if [ $running -ge $N_JOBS ]; then
