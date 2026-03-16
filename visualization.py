@@ -396,7 +396,7 @@ class visualization:
         ax.set_xlabel("", fontsize=18,color=col, fontweight='bold')
         ax.set_ylabel("mean absolute error (MAE)", fontsize=16,fontweight='bold',color=col)
         fig.tight_layout()
-        plt.savefig(self.dir + '/' + var_name + file_name, dpi=500,figsize=(10, 6))
+        plt.savefig(self.dir + '/' + var_name + file_name, dpi=500)
         plt.close()
 
 
@@ -782,5 +782,5 @@ class visualization:
                                         orientation='vertical')
         cb1.set_label('Fraction')
 
-        plt.savefig(self.dir + '/Per_clone_' +section + '_H.png', dpi=100,figsize=(8, 6))
+        plt.savefig(self.dir + '/Per_clone_' +section + '_H.png', dpi=100)
         plt.close()
