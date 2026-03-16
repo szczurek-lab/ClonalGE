@@ -450,7 +450,7 @@ class clonalGE:
         n = np.round(x)
         p_dis = self.calculate_logp_dis(D, H, phi, I, n)
 
-        r = n[:, None] * np.matmul(H, B)
+        r = np.asarray(n)[:, None] * np.matmul(H, B)
         r = r * self.p_y_ratio
         r = np.multiply(self.t, r)
         p_Y = scipy.stats.nbinom.logpmf(Y, r, p_y)  # Sxg
@@ -527,7 +527,7 @@ class clonalGE:
         p_ais = self.calculate_logp_ais(A, D, H, phi, C, theta)
         p_dis = self.calculate_logp_dis(D, H, phi, I, n)
 
-        r = n[:, None] * np.matmul(H, B)
+        r = np.asarray(n)[:, None] * np.matmul(H, B)
         r = r * self.p_y_ratio
         r = np.multiply(self.t, r)
         p_Y = scipy.stats.nbinom.logpmf(Y, r, p_y)  # Sxg
@@ -627,7 +627,7 @@ class clonalGE:
         return B
 
     def B_target_matrix(self, B, Y, H, n, p_y, b_alpha, b_beta):
-        r = n[:, None] * np.matmul(H, B)
+        r = np.asarray(n)[:, None] * np.matmul(H, B)
         r = r * self.p_y_ratio
         r = np.multiply(self.t, r)  # Sxg
         p_Y = scipy.stats.nbinom.logpmf(Y, r, p_y)  # Sxg
