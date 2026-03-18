@@ -45,7 +45,7 @@ CHAIN_COUNT = 10
 
 
 def load_chains(result_prefix, run_seed, section):
-    result_obj = f'{result_prefix}_{run_seed}/results_{section}'
+    result_obj = f'{result_prefix}_{run_seed}/inferred_vars_{section}'
     chains = []
     for cc in range(CHAIN_COUNT):
         path = result_obj + f'_chain_{cc}'
@@ -111,7 +111,7 @@ def main():
     parser.add_argument('--result_prefix', default='Results_figure5')
     parser.add_argument('--num_runs',      type=int, default=10)
     parser.add_argument('--start_seed',    type=int, default=1)
-    parser.add_argument('--section',       default='P1.2')
+    parser.add_argument('--section',       default='all')
     parser.add_argument('--tum_h',         default=None,
                         help='Path to Tumoroscope inferred H .npy (for panel a)')
     parser.add_argument('--tum_n',         default=None,
@@ -134,7 +134,7 @@ def main():
 
     # --- load observed data (Y, p_y) from the first chain of the first run ---
     first_chain_path = (f'{args.result_prefix}_{args.start_seed}/'
-                        f'results_{args.section}_chain_0')
+                        f'inferred_vars_{args.section}_chain_0')
     print(f'Loading observed data from {first_chain_path}')
     t = pickle.load(open(first_chain_path, 'rb'))
 
