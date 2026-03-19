@@ -481,7 +481,153 @@ Projects in the Szczurek lab are co-funded by Merck Healthcare KGaA.
 %\bibliography{reference}
 
 
+% ══════════════════════════════════════════════════════════════════════════════
+% SUPPLEMENTARY MATERIAL
+% ══════════════════════════════════════════════════════════════════════════════
+\newpage
+\color{revisionblue}
+\setcounter{figure}{0}
+\renewcommand{\thefigure}{S\arabic{figure}}
 
+\section*{Supplementary Material}
 
+\subsection*{MCMC convergence and model identifiability}
+
+To address concerns about model identifiability and the reproducibility of
+inference under a complex posterior, we ran ClonalGE on the prostate cancer
+dataset with ten independent runs, each comprising ten parallel MCMC chains
+initialised from different random seeds.
+The analysis proceeded in two stages.
+
+\paragraph{Stage 1 --- Within-run chain selection.}
+Within each run, the chain with the highest log-likelihood was identified as
+the within-run reference.
+Every other chain was compared to the reference by computing the Pearson
+correlation between their flattened posterior mean clonal composition
+matrices~$H$.  Chains with $r>0.9$ were retained; the remainder were
+discarded.  The within-run posterior estimate was obtained by element-wise
+averaging of all retained chains' posterior mean arrays for $H$, $B$,
+and~$N$.
+
+\paragraph{Stage 2 --- Consensus cross-run selection with Hungarian clone
+alignment.}
+Because mixture models are invariant to relabelling of latent components,
+clone indices may differ across independent runs (label switching).
+For each candidate reference run, every other run's $H$ was realigned to
+the candidate using the Hungarian algorithm: a $K\times K$ cost matrix of
+negative Pearson correlations between clone columns was minimised with a
+linear assignment solver, yielding the clone permutation that maximises
+inter-run agreement; the same permutation was applied to~$B$.
+After alignment, the number of runs agreeing with the candidate reference
+($r>0.9$ on the flattened aligned~$H$) was counted.  The candidate
+maximising this count was designated the \emph{consensus} run (ties broken
+by highest mean~$r$ among agreers).  The final posterior estimates were
+the element-wise means of the aligned arrays from all runs in the
+consensus group.
+Results are presented in
+Supplementary Figures~\ref{fig:chain_agreement}--\ref{fig:figure5_supp}.
+
+% ── Supplementary Figure S1 ────────────────────────────────────────────────
+\begin{figure*}[htbp]
+  \centering
+  \includegraphics[width=0.78\textwidth]{figures/chain_agreement.png}
+  \caption{%
+    \textbf{Within-run MCMC chain agreement for the run with the highest
+    log-likelihood (run~2).}
+    Pairwise Pearson correlation coefficients between the posterior mean
+    estimates of all ten independent MCMC chains within the best-performing
+    run, shown separately for the clonal composition matrix~$H$
+    (spots~$\times$~clones; left) and the clone-specific gene expression
+    matrix~$B$ (clones~$\times$~genes; right).
+    For each pair of chains $(i,j)$, the Pearson correlation was computed
+    between their flattened \texttt{inferred\_H} (resp.\ \texttt{inferred\_B})
+    arrays, giving two symmetric $10\times10$ matrices.
+    Chain~4 (bold) achieved the highest log-likelihood within the run and
+    served as the within-run reference (threshold $r>0.9$); chains are
+    reordered so that retained chains (blue labels) appear before the dashed
+    selection boundary, with excluded chains (red labels) after it.
+    All ten chains were retained (minimum pairwise $r=0.99$ for both $H$
+    and $B$), demonstrating that independently initialised Gibbs samplers
+    converge to a consistent posterior solution within a single run.%
+  }
+  \label{fig:chain_agreement}
+\end{figure*}
+
+% ── Supplementary Figure S2 ────────────────────────────────────────────────
+\begin{figure*}[htbp]
+  \centering
+  \includegraphics[width=\textwidth]{figures/chain_agreement_supp.png}
+  \caption{%
+    \textbf{Within-run MCMC chain agreement across all ten independent runs.}
+    The same pairwise Pearson correlation procedure as in
+    Supplementary Figure~\ref{fig:chain_agreement} was applied independently
+    to each of the ten runs.
+    Panels are arranged as a $5\times4$ grid: the top two heatmap rows show
+    $H$ (clonal composition) and $B$ (gene expression) for runs~1--5;
+    the bottom two rows show the same for runs~6--10.
+    Within each panel the highest-loglik chain (bold) serves as the
+    within-run reference; chains with $r>0.9$ are labelled in blue and
+    placed before the dashed selection boundary, while excluded chains are
+    labelled in red.  The panel title reports the number of retained chains.
+    Nine of ten runs retained all ten chains ($10/10$); run~4 retained
+    six ($6/10$), with four chains diverging to a different posterior region.
+    In all runs, retained chains show pairwise $r\geq0.97$ for $H$ and
+    $r\geq0.87$ for $B$, confirming robust within-run convergence.%
+  }
+  \label{fig:chain_agreement_supp}
+\end{figure*}
+
+% ── Supplementary Figure S3 ────────────────────────────────────────────────
+\begin{figure*}[htbp]
+  \centering
+  \includegraphics[width=0.78\textwidth]{figures/run_agreement.png}
+  \caption{%
+    \textbf{Across-run agreement over ten independent runs after
+    consensus-based clone alignment.}
+    Each run's posterior estimate of $H$ and $B$ was obtained by within-run
+    chain selection and averaging (Stage~1).  Clone indices were then aligned
+    across runs using the Hungarian algorithm (Stage~2).  Run~8 (bold) was
+    identified as the consensus, with six of ten runs satisfying $r>0.9$ on
+    the aligned~$H$ (runs~3--8, blue labels); the remaining four runs (red
+    labels) were excluded.
+    The $10\times10$ pairwise Pearson correlation matrices are shown for the
+    aligned~$H$ (left) and~$B$ (right), with runs reordered so the consensus
+    group appears first.
+    Within the selected group, mean pairwise $r=0.99$ (minimum $0.96$) for
+    $H$ and mean $r=0.96$ (minimum $0.88$) for $B$, confirming reproducible
+    recovery of clonal composition and gene expression structure.
+    The four excluded runs had converged to a different clone ordering that
+    could not be reconciled after alignment, consistent with the known
+    label-switching behaviour of Bayesian mixture models.%
+  }
+  \label{fig:run_agreement}
+\end{figure*}
+
+% ── Supplementary Figure S4 ────────────────────────────────────────────────
+\begin{figure*}[htbp]
+  \centering
+  \includegraphics[width=\textwidth]{figures/figure5_supp.png}
+  \caption{%
+    \textbf{Per-run predicted versus observed gene expression across all ten
+    independent runs.}
+    For each run, the within-run averaged $H$, $B$, and $N$ were used to
+    compute the predicted expression matrix
+    $\hat{Y}=\mathrm{diag}(N)\cdot H\cdot B$, with per-section scaling
+    applied to account for differing sequencing depths across the three
+    tissue sections (P1.2, P2.4, P3.3).
+    Each point represents one gene--spot observation, coloured by the
+    per-observation negative-binomial log-likelihood.
+    The Pearson~$r$ between $Y_{\mathrm{true}}$ and~$\hat{Y}$ is annotated
+    in each panel.
+    Green borders indicate runs selected by the consensus cross-run filter
+    (runs~3--8); red borders indicate excluded runs (runs~1, 2, 9, 10);
+    run~8 is additionally labelled as the consensus reference.
+    All runs achieve $r\approx0.88$--$0.93$, confirming that every run
+    fits the observed expression data well regardless of clone-label
+    orientation, and that exclusion of runs~1, 2, 9, and~10 is driven by
+    label switching rather than inferior predictive accuracy.%
+  }
+  \label{fig:figure5_supp}
+\end{figure*}
 
 \end{document}

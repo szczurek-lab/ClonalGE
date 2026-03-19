@@ -32,6 +32,7 @@ import os
 import pickle
 import sys
 
+import run_selection as rs
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
@@ -39,7 +40,7 @@ import matplotlib.ticker as ticker
 import numpy as np
 import pandas as pd
 import scipy.stats
-from scipy.optimize import lsq_linear
+from scipy.optimize import lsq_linear, linear_sum_assignment
 from scipy.stats import pearsonr
 
 CHAIN_COUNT = 10
@@ -116,26 +117,80 @@ def process_all_runs(result_prefix, num_runs, start_seed, section, threshold=0.9
     return per_run
 
 
-# ── cross-run selection ───────────────────────────────────────────────────────
+# ── cross-run consensus selection (Hungarian alignment) ───────────────────────
+
+def _align_H_B(H_ref, H_other, B_other):
+    """Permute clones of H_other/B_other to best match H_ref."""
+    K    = H_ref.shape[1]
+    cost = np.zeros((K, K))
+    for i in range(K):
+        for j in range(K):
+            cost[i, j] = -pearsonr(H_ref[:, i], H_other[:, j])[0]
+    _, perm = linear_sum_assignment(cost)
+    return H_other[:, perm], B_other[perm, :], perm
+
 
 def cross_run_selection(per_run, threshold=0.9):
     """
-    Find the run with the highest best_loglik, then keep only runs whose
-    averaged H correlates with the best run's H at r > threshold.
-    Returns (selected_run_ids, best_run_id, corr_per_run).
+    Consensus-based cross-run selection with Hungarian clone alignment.
+
+    For each candidate reference run, align all other runs' H/B to it and
+    count how many agree (r >= threshold on H).  Pick the reference that
+    maximises the agreement count (ties broken by mean r among agreers).
+
+    Returns:
+        selected_runs  — list of run ids in the consensus group
+        consensus_run  — run id of the consensus reference
+        H_aligned      — dict {run_id: aligned H array}
+        B_aligned      — dict {run_id: aligned B array}
+        perms          — dict {run_id: clone permutation applied}
     """
-    best_run = max(per_run, key=lambda r: per_run[r]['best_loglik'])
-    ref_H = per_run[best_run]['H'].flatten()
+    run_ids = list(per_run.keys())
+    H_list  = [per_run[r]['H'] for r in run_ids]
+    B_list  = [per_run[r]['B'] for r in run_ids]
+    n       = len(run_ids)
 
-    selected = []
-    corrs = {}
-    for run, data in per_run.items():
-        r, _ = pearsonr(ref_H, data['H'].flatten())
-        corrs[run] = r
-        if r >= threshold:
-            selected.append(run)
+    best_ref_pos  = 0
+    best_count    = -1
+    best_mean_r   = -1.0
+    best_selected = None
+    best_H_al     = best_B_al = best_perms = None
 
-    return selected, best_run, corrs
+    for ref_pos in range(n):
+        H_al, B_al, perms = [], [], []
+        ref_flat = H_list[ref_pos].flatten()
+        for i in range(n):
+            if i == ref_pos:
+                H_al.append(H_list[i])
+                B_al.append(B_list[i])
+                perms.append(list(range(H_list[i].shape[1])))
+            else:
+                Ha, Ba, p = _align_H_B(H_list[ref_pos], H_list[i], B_list[i])
+                H_al.append(Ha)
+                B_al.append(Ba)
+                perms.append(p.tolist())
+
+        r_vals   = [pearsonr(ref_flat, H_al[i].flatten())[0] for i in range(n)]
+        selected = [i for i, r in enumerate(r_vals) if r >= threshold]
+        mean_r   = float(np.mean([r_vals[i] for i in selected]))
+
+        if (len(selected) > best_count or
+                (len(selected) == best_count and mean_r > best_mean_r)):
+            best_ref_pos  = ref_pos
+            best_count    = len(selected)
+            best_mean_r   = mean_r
+            best_selected = selected
+            best_H_al     = H_al
+            best_B_al     = B_al
+            best_perms    = perms
+
+    selected_runs = [run_ids[i] for i in best_selected]
+    consensus_run = run_ids[best_ref_pos]
+    H_aligned     = {run_ids[i]: best_H_al[i] for i in range(n)}
+    B_aligned     = {run_ids[i]: best_B_al[i] for i in range(n)}
+    perms_out     = {run_ids[i]: best_perms[i] for i in range(n)}
+
+    return selected_runs, consensus_run, H_aligned, B_aligned, perms_out
 
 
 # ── Y_pred computation ────────────────────────────────────────────────────────
@@ -183,37 +238,36 @@ def main():
     parser.add_argument('--num_runs',         type=int, default=10)
     parser.add_argument('--start_seed',       type=int, default=1)
     parser.add_argument('--section',          default='all')
-    parser.add_argument('--cross_run_thresh', type=float, default=0.9)
+    parser.add_argument('--cross_run_thresh', '--threshold', type=float, default=0.9)
     parser.add_argument('--tum_h',            default=None)
     parser.add_argument('--tum_n',            default=None)
-    parser.add_argument('--output',           default='plots_paper/figure5.png')
-    parser.add_argument('--output_supp',      default='plots_paper/figure5_supp.png')
+    parser.add_argument('--approach',         type=int, default=2, choices=[1, 2, 3],
+                        help='1=highest loglik  2=consensus  3=consensus anchored to HL')
+    parser.add_argument('--outdir',           default='plots_paper')
     parser.add_argument('--force_reselect',   action='store_true')
     args = parser.parse_args()
 
-    # ── step 1: within-run selection ─────────────────────────────────────────
-    print('=== Within-run chain selection ===')
-    per_run = process_all_runs(
-        args.result_prefix, args.num_runs, args.start_seed,
-        args.section, threshold=args.cross_run_thresh)
+    output      = os.path.join(args.outdir, 'figure5.png')
+    output_supp = os.path.join(args.outdir, 'figure5_supp.png')
 
-    # ── step 2: cross-run selection ───────────────────────────────────────────
-    print('\n=== Cross-run selection ===')
-    selected_runs, best_run, corrs = cross_run_selection(per_run, args.cross_run_thresh)
-    print(f'Best run: {best_run}  (loglik={per_run[best_run]["best_loglik"]:.2f})')
+    # ── run selection ─────────────────────────────────────────────────────────
+    res           = rs.select_runs(args.approach, args.result_prefix, args.num_runs,
+                                   args.start_seed, args.section, args.cross_run_thresh)
+    per_run       = res['per_run']
+    selected_runs = res['selected_runs']
+    consensus_run = res['ref_run']
+    H_aligned     = res['H_aligned']
+    B_aligned     = res['B_aligned']
+    perms         = res['perms']
+
     for run in sorted(per_run):
         status = 'SELECTED' if run in selected_runs else 'EXCLUDED'
-        print(f'  Run {run:2d}: r={corrs[run]:.4f}  [{status}]')
-    print(f'\n{len(selected_runs)} runs selected: {selected_runs}')
+        print(f'  Run {run:2d}: perm={perms[run]}  [{status}]')
 
-    # ── step 3: average across selected runs ──────────────────────────────────
-    all_selected_chains = []
-    for run in selected_runs:
-        all_selected_chains.extend(per_run[run]['chains'])
-
-    H_pred = np.mean([c.inferred_H for c in all_selected_chains], axis=0)
-    B_pred = np.mean([c.inferred_B for c in all_selected_chains], axis=0)
-    N_pred = np.mean([c.inferred_n for c in all_selected_chains], axis=0)
+    # ── average aligned H/B + n across selected runs ──────────────────────────
+    H_pred = res['H_final']
+    B_pred = res['B_final']
+    N_pred = res['n_final']
 
     # ── load observed data ────────────────────────────────────────────────────
     ref_chain_path = (f'{args.result_prefix}_{args.start_seed}/'
@@ -238,8 +292,7 @@ def main():
         sfa[spots.str.startswith(sec)] = s
     sfa = (1.0 / sfa).reshape(-1, 1)
 
-    os.makedirs(os.path.dirname(args.output) or '.', exist_ok=True)
-    os.makedirs(os.path.dirname(args.output_supp) or '.', exist_ok=True)
+    os.makedirs(args.outdir, exist_ok=True)
 
     # ══════════════════════════════════════════════════════════════════════════
     # MAIN FIGURE 5
@@ -279,8 +332,8 @@ def main():
 
     plt.subplots_adjust(wspace=0.4)
     plt.tight_layout()
-    plt.savefig(args.output, dpi=400, bbox_inches='tight')
-    print(f'Main figure saved to {args.output}')
+    plt.savefig(output, dpi=400, bbox_inches='tight')
+    print(f'Main figure saved to {output}')
     plt.close()
 
     # ══════════════════════════════════════════════════════════════════════════
@@ -304,10 +357,10 @@ def main():
             per_run[run]['H'], per_run[run]['B'], per_run[run]['n'], sfa)
 
         is_selected = run in selected_runs
-        r_cross = corrs[run]
-        ll_best = per_run[run]['best_loglik']
-        title = (f'Run {run}  [{"✓" if is_selected else "✗"}]\n'
-                 f'loglik={ll_best:.0f}  r_cross={r_cross:.3f}')
+        ll_best     = per_run[run]['best_loglik']
+        tag         = '✓ consensus' if run == consensus_run else ('✓' if is_selected else '✗')
+        title = (f'Run {run}  [{tag}]\n'
+                 f'loglik={ll_best:.0f}  perm={perms[run]}')
 
         sc, corr = scatter_panel(ax, t.Y, Y_pred_run, t.p_y,
                                  title=title, fontsize=6)
@@ -335,8 +388,8 @@ def main():
         '(green border = selected by cross-run filter, red = excluded)',
         fontsize=8, y=1.01)
 
-    plt.savefig(args.output_supp, dpi=350, bbox_inches='tight')
-    print(f'Supplementary figure saved to {args.output_supp}')
+    plt.savefig(output_supp, dpi=350, bbox_inches='tight')
+    print(f'Supplementary figure saved to {output_supp}')
     plt.close()
 
 
