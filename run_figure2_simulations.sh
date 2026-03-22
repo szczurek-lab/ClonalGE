@@ -47,4 +47,30 @@ for i in $(seq 1 $RUNS); do
 done
 
 echo ""
-echo "[$(timestamp)] === All runs completed. Results in: ${RESULTS_DIR} ==="
+echo "[$(timestamp)] === Step 3: Running scalability / runtime analysis ==="
+if python run_scalability.py \
+    --iters 500 \
+    --outdir results/scalability \
+    > "${LOG_DIR}/scalability.log" 2>&1; then
+    echo "[$(timestamp)]   Scalability analysis OK"
+else
+    echo "[$(timestamp)]   ERROR in scalability analysis — see ${LOG_DIR}/scalability.log"
+fi
+
+echo ""
+echo "[$(timestamp)] === Step 4: Plotting runtime figure ==="
+mkdir -p plots_paper
+if python plot_runtime.py \
+    --csv results/scalability/runtime_results.csv \
+    --output plots_paper/runtime.png \
+    > "${LOG_DIR}/plot_runtime.log" 2>&1; then
+    echo "[$(timestamp)]   Runtime figure saved to plots_paper/runtime.png"
+else
+    echo "[$(timestamp)]   ERROR plotting runtime — see ${LOG_DIR}/plot_runtime.log"
+fi
+
+echo ""
+echo "[$(timestamp)] === All steps completed. ==="
+echo "[$(timestamp)]   Simulation results : ${RESULTS_DIR}"
+echo "[$(timestamp)]   Scalability CSV    : results/scalability/runtime_results.csv"
+echo "[$(timestamp)]   Runtime figure     : plots_paper/runtime.png"
