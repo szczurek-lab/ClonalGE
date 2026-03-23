@@ -118,7 +118,7 @@ class visualization:
         plt.close()
 
     def likelihood_all(self, obj,name):
-        #plt.figure()
+        plt.figure()
         for c in obj:
             plt.plot(range(len(c.loglik)),c.loglik)
         plt.savefig(self.dir + '/' + name + '.png')

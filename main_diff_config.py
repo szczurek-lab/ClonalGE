@@ -268,8 +268,8 @@ for file in glob.glob(config_file + "/*.json"):
 
 
     vis_1.likelihood_all(cl_all,'likelihood_all')
+    plt.close('all')
 
- 
 print(result_df)
 dir_out = dir_results + '/csv'
 if not os.path.exists(dir_out):
