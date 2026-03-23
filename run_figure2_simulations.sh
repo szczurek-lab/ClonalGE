@@ -25,6 +25,14 @@ SKIP_GENERATION=true
 
 mkdir -p "$LOG_DIR"
 
+# Prevent OpenBLAS/MKL from spawning internal threads. When Python's
+# multiprocessing uses fork(), child processes inherit corrupted BLAS thread
+# state, causing "corrupted size vs. prev_size" heap crashes.
+export OPENBLAS_NUM_THREADS=1
+export OMP_NUM_THREADS=1
+export MKL_NUM_THREADS=1
+export BLAS_NUM_THREADS=1
+
 timestamp() { date '+%Y-%m-%d %H:%M:%S'; }
 
 # Returns 0 (true) if all config sample files exist for run $1
