@@ -264,7 +264,7 @@ for file in glob.glob(config_file + "/*.json"):
                     'n_SEE': chain_best.n_SEE,
                     'B_SEE': chain_best.B_SEE
                     }
-    result_df = result_df.append(best_dict, ignore_index=True)
+    result_df = pd.concat([result_df, pd.DataFrame([best_dict])], ignore_index=True)
 
 
     vis_1.likelihood_all(cl_all,'likelihood_all')
