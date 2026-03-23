@@ -18,21 +18,46 @@ RESULTS_DIR="Results_simulated_data/"
 NOISE=0
 LOG_DIR="logs_figure2"
 
+# Set to true to skip generation when data already exists on the server.
+# Per-run: generation is also skipped automatically if all config sample
+# files are found under ${SIM_DIR}/<run>/ regardless of this flag.
+SKIP_GENERATION=true
+
 mkdir -p "$LOG_DIR"
 
 timestamp() { date '+%Y-%m-%d %H:%M:%S'; }
 
+# Returns 0 (true) if all config sample files exist for run $1
+sim_data_exists() {
+    local run=$1
+    for cfg in normal low_variance high_coverage; do
+        if [ ! -f "${SIM_DIR}${run}/sample_${cfg}" ]; then
+            return 1
+        fi
+    done
+    return 0
+}
+
 echo "[$(timestamp)] === Step 1: Generating simulated data (${RUNS} replicates) ==="
+if [ "$SKIP_GENERATION" = true ]; then
+    echo "[$(timestamp)]   SKIP_GENERATION=true — checking existing files ..."
+fi
 for i in $(seq 1 $RUNS); do
-    echo "[$(timestamp)]   Generating run $i / $RUNS ..."
-    if python generate_simulations.py $i "$SIM_DIR" "$CONFIG_DIR" $NOISE \
-        > "${LOG_DIR}/generate_${i}.log" 2>&1; then
-        echo "[$(timestamp)]   Run $i generation OK"
+    if sim_data_exists $i; then
+        echo "[$(timestamp)]   Run $i — data already exists, skipping generation."
+    elif [ "$SKIP_GENERATION" = true ]; then
+        echo "[$(timestamp)]   Run $i — data missing but SKIP_GENERATION=true, skipping."
     else
-        echo "[$(timestamp)]   ERROR in generation run $i — see ${LOG_DIR}/generate_${i}.log"
+        echo "[$(timestamp)]   Generating run $i / $RUNS ..."
+        if python generate_simulations.py $i "$SIM_DIR" "$CONFIG_DIR" $NOISE \
+            > "${LOG_DIR}/generate_${i}.log" 2>&1; then
+            echo "[$(timestamp)]   Run $i generation OK"
+        else
+            echo "[$(timestamp)]   ERROR in generation run $i — see ${LOG_DIR}/generate_${i}.log"
+        fi
     fi
 done
-echo "[$(timestamp)]   Done generating."
+echo "[$(timestamp)]   Done with Step 1."
 
 echo ""
 echo "[$(timestamp)] === Step 2: Running ClonalGE on simulated data (${RUNS} replicates) ==="
