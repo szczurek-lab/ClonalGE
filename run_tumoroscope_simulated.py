@@ -47,7 +47,12 @@ if len(sys.argv) < 5:
     print("Usage: run_tumoroscope_simulated.py <run_num> <output_dir> <config_dir> <noise>")
     sys.exit(1)
 
-run_number  = str(sys.argv[1])
+run_number  = str(sys.argv[1]).strip()
+if not run_number:
+    print("ERROR: run_number (argv[1]) is empty.")
+    print("  If using SLURM, submit with: sbatch run_tumoroscope_simulated_slurm.sh")
+    print("  If running manually:         python run_tumoroscope_simulated.py 1 <output_dir> <config_dir> <noise>")
+    sys.exit(1)
 results_dir = sys.argv[2].rstrip('/') + run_number   # e.g. .../Results_simulated_tumoroscope1
 config_dir  = sys.argv[3]
 noise       = str(sys.argv[4])
