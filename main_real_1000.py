@@ -284,6 +284,10 @@ def main():
                              changes_batch=data['sampling']['changes_batch'], 
                              var_calculation=False)
 
+        # Save Tumoroscope H and N for post-hoc regression comparison (Figure 5 panel a)
+        np.save(result_dir + '/' + section + '_tum_h.npy', tum_0.inferred_H)
+        np.save(result_dir + '/' + section + '_tum_n.npy', tum_0.inferred_n)
+
         B = calc_B(Y, tum_0.inferred_H, tum_0.inferred_n)
         inits = (tum_0.inferred_n, tum_0.inferred_H, tum_0.inferred_G, tum_0.inferred_pi, tum_0.inferred_phi, tum_0.inferred_Z, B)
 

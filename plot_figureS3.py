@@ -23,6 +23,7 @@ import argparse
 import os
 import pickle
 
+import run_selection as rs
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
@@ -286,6 +287,8 @@ def main():
     ap.add_argument('--start_seed',    type=int, default=1)
     ap.add_argument('--section',       default='all')
     ap.add_argument('--threshold',     type=float, default=0.9)
+    ap.add_argument('--approach',      type=int,   default=2, choices=[1, 2, 3],
+                    help='1=highest loglik  2=consensus  3=consensus anchored to HL')
     ap.add_argument('--output',        default='plots_paper/run_agreement.png')
     ap.add_argument('--synthetic',     action='store_true')
     args = ap.parse_args()
@@ -294,24 +297,27 @@ def main():
         print('Generating synthetic runs for layout preview...')
         run_ids, H_runs, B_runs, best_lls, n_kept = make_synthetic()
     else:
-        print(f'Loading {args.num_runs} runs from {args.result_prefix}_* ...')
-        run_ids, H_runs, B_runs, best_lls, n_kept = load_all_runs(
-            args.result_prefix, args.num_runs, args.start_seed,
-            args.section, args.threshold)
+        res = rs.select_runs(args.approach, args.result_prefix, args.num_runs,
+                             args.start_seed, args.section, args.threshold)
+        per_run      = res['per_run']
+        selected_set = set(res['selected_runs'])
+        ref_run      = res['ref_run']
+        H_aligned    = res['H_aligned']
+        B_aligned    = res['B_aligned']
+        perms_dict   = res['perms']
 
-    n = len(run_ids)
+        run_ids  = sorted(per_run.keys())
+        n        = len(run_ids)
+        H_al     = [H_aligned[r] for r in run_ids]
+        B_al     = [B_aligned[r] for r in run_ids]
+        selected = [i for i, r in enumerate(run_ids) if r in selected_set]
+        ref_pos  = run_ids.index(ref_run)
 
-    # ── find consensus run and align clones ───────────────────────────────────
-    print(f'\nSearching for consensus run (threshold r > {args.threshold})...')
-    ref_pos, selected, H_al, B_al, perms = find_consensus(
-        H_runs, B_runs, args.threshold)
-
-    print(f'Consensus run: {run_ids[ref_pos]}  '
-          f'({len(selected)}/{n} runs agree)')
-    print(f'Selected runs: {[run_ids[i] for i in selected]}')
-    for i, p in enumerate(perms):
-        tag = ' ← consensus' if i == ref_pos else ''
-        print(f'  Run {run_ids[i]:2d}: clone permutation = {p}{tag}')
+        print(f'\nRef run: {ref_run}  ({len(selected)}/{n} runs selected)')
+        print(f'Selected runs: {[run_ids[i] for i in selected]}')
+        for i, r in enumerate(run_ids):
+            tag = ' ← ref' if r == ref_run else ''
+            print(f'  Run {r:2d}: clone permutation = {perms_dict[r]}{tag}')
 
     R_H = pairwise_r(H_al)
     R_B = pairwise_r(B_al)
@@ -382,9 +388,12 @@ def main():
                handlelength=1.0, handletextpad=0.5, columnspacing=1.2)
 
     # ── footnote ──────────────────────────────────────────────────────────────
+    approach_labels = {1: 'highest log-likelihood run (bold)',
+                       2: 'consensus run = most agreeing (bold)',
+                       3: 'consensus anchored to highest log-likelihood (bold)'}
+    ref_label = approach_labels.get(getattr(args, 'approach', 2), '')
     fig.text(0.46, -0.09,
-             'Clones aligned across runs via Hungarian algorithm '
-             '(consensus run = most agreeing, bold)',
+             f'Clones aligned across runs via Hungarian algorithm  ({ref_label})',
              ha='center', va='bottom', fontsize=FS_BASE - 1.5,
              color='#555555', style='italic')
 

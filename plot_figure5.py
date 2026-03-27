@@ -43,6 +43,12 @@ import scipy.stats
 from scipy.optimize import lsq_linear, linear_sum_assignment
 from scipy.stats import pearsonr
 
+try:
+    import statsmodels.api as sm
+    _SM_AVAILABLE = True
+except ImportError:
+    _SM_AVAILABLE = False
+
 CHAIN_COUNT = 10
 
 
@@ -201,15 +207,75 @@ def compute_Y_pred(H, B, n, scaling_factors_array):
     return np.matmul(X * scaling_factors_array, B)
 
 
+# ── NB regression ─────────────────────────────────────────────────────────────
+
+def calc_B_nb(Y_scaled, X):
+    """
+    Fit Negative Binomial GLM (log link) per gene as a post-processing step
+    after Tumoroscope.  Analogous to the LR step but uses NB distribution.
+
+    Y_scaled : (S, g) section-normalised expression — rounded to integers
+    X        : (S, K) design matrix  (N_diag @ H from Tumoroscope)
+
+    Returns
+    -------
+    B              : (K, g) fitted coefficients
+    Y_pred_scaled  : (S, g) NB fitted values in the scaled space
+    """
+    if not _SM_AVAILABLE:
+        raise ImportError(
+            'statsmodels is required for NB regression. '
+            'Install with:  pip install statsmodels')
+
+    K, G = X.shape[1], Y_scaled.shape[1]
+    Y_int = np.round(Y_scaled).astype(int).clip(0)
+
+    # Only fit on rows where X is non-zero (spots with clone activity)
+    row_mask = X.sum(axis=1) > 0
+    X_fit = X[row_mask]
+
+    B = np.zeros((K, G))
+    Y_pred_scaled = np.zeros_like(Y_scaled, dtype=float)
+
+    n_failed = 0
+    for g in range(G):
+        y_g = Y_int[row_mask, g]
+        if y_g.sum() == 0:
+            continue
+        try:
+            # Add intercept column for numerical stability
+            X_fit_int = np.column_stack([X_fit, np.ones(X_fit.shape[0])])
+            model = sm.GLM(y_g, X_fit_int,
+                           family=sm.families.NegativeBinomial())
+            result = model.fit(disp=False, maxiter=200)
+            # Fitted values are on the original (unscaled) count scale
+            Y_pred_scaled[row_mask, g] = result.fittedvalues
+            B[:, g] = result.params[:K]   # exclude intercept
+        except Exception:
+            n_failed += 1
+            # Fall back to non-negative LR for this gene
+            B[:, g] = lsq_linear(X_fit, Y_scaled[row_mask, g],
+                                  bounds=(0, np.inf)).x
+            Y_pred_scaled[row_mask, g] = X_fit @ B[:, g]
+
+    if n_failed:
+        print(f'  NB GLM: {n_failed}/{G} genes fell back to LR '
+              f'(convergence failure)')
+    return B, Y_pred_scaled
+
+
 # ── scatter panel ─────────────────────────────────────────────────────────────
 
-def scatter_panel(ax, Y_true, Y_pred, p_y, title, letter=None, fontsize=7):
+def scatter_panel(ax, Y_true, Y_pred, p_y, title, letter=None, fontsize=7,
+                  vmin=None, vmax=0):
     r_nb = np.matmul(Y_pred, np.diag(p_y / (1 - p_y)))
     ll   = scipy.stats.nbinom.logpmf(Y_true, r_nb, p=p_y)
+    if vmin is None:
+        vmin = ll.min() - 1
 
     sc = ax.scatter(Y_true[:, ::-1], Y_pred[:, ::-1],
                     s=4, c=ll[:, ::-1], cmap='viridis',
-                    vmin=ll.min() - 1, vmax=0)
+                    vmin=vmin, vmax=vmax)
     lims = ax.get_xlim()
     ax.plot(lims, lims, '--', color='gray', alpha=0.5, linewidth=0.7)
     ax.set_xlim(-100, np.max(Y_true) + 100)
@@ -241,6 +307,8 @@ def main():
     parser.add_argument('--cross_run_thresh', '--threshold', type=float, default=0.9)
     parser.add_argument('--tum_h',            default=None)
     parser.add_argument('--tum_n',            default=None)
+    parser.add_argument('--vmin',             type=float, default=None,
+                        help='Fixed log-likelihood colorbar minimum (shared across figures)')
     parser.add_argument('--approach',         type=int, default=2, choices=[1, 2, 3],
                         help='1=highest loglik  2=consensus  3=consensus anchored to HL')
     parser.add_argument('--outdir',           default='plots_paper')
@@ -307,11 +375,16 @@ def main():
         N_mat = N_tum * np.eye(len(N_tum))
         X_tum = np.matmul(N_mat, H_tum)
         g_count = t.Y.shape[1]
-        B_tum = np.zeros((H_tum.shape[0], g_count))
+        B_tum = np.zeros((H_tum.shape[1], g_count))
         for g in range(g_count):
             if Y_scaled[:, g].sum() > 0:
                 B_tum[:, g] = lsq_linear(X_tum, Y_scaled[:, g], bounds=(0, np.inf)).x
         panels.append(('Tumoroscope + LR', np.matmul(X_tum * sfa, B_tum)))
+
+        print('Computing Tumoroscope + NB regression panel...')
+        B_nb, Y_pred_nb_scaled = calc_B_nb(Y_scaled, X_tum)
+        # sfa shape is (S, 1); Y_pred_nb_scaled is (S, g) → back to original scale
+        panels.append(('Tumoroscope + NB', Y_pred_nb_scaled * sfa))
 
     print('Computing ClonalGE panel...')
     panels.append(('TumoroscopeGE', compute_Y_pred(H_pred, B_pred, N_pred, sfa)))
@@ -321,11 +394,24 @@ def main():
     if n_panels == 1:
         axes = [axes]
 
+    # Compute unified log-likelihood range across all panels
+    # (override with --vmin to share range across multiple figures)
+    if args.vmin is not None:
+        global_vmin = args.vmin
+    else:
+        global_vmin = 0
+        for _, Y_pred in panels:
+            r_nb = np.matmul(Y_pred, np.diag(t.p_y / (1 - t.p_y)))
+            ll   = scipy.stats.nbinom.logpmf(t.Y, r_nb, p=t.p_y)
+            global_vmin = min(global_vmin, ll.min() - 1)
+
     for i, (title, Y_pred) in enumerate(panels):
         sc, corr = scatter_panel(axes[i], t.Y, Y_pred, t.p_y,
-                                 title=title, letter='ab'[i])
+                                 title=title, letter='abcdef'[i],
+                                 vmin=global_vmin, vmax=0)
         axes[i].set_xlabel('True gene expression')
-        axes[i].set_ylabel('Calculated gene expression' if i == 0 else '')
+        axes[i].set_ylabel('Calculated gene expression' if i == 0 else ''
+                           )
         cb = plt.colorbar(sc, label='Log-likelihood', ax=axes[i])
         cb.outline.set_edgecolor('k')
         cb.outline.set_linewidth(0.5)
