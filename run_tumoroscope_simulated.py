@@ -126,8 +126,24 @@ for cfg_path in sorted(glob.glob(os.path.join(config_dir, "*.json"))):
     n_lambda = np.tile(data['n_variation']['n_lambda'], S)
 
     # ── Load or generate simulation ───────────────────────────────────────────
-    sim_path = os.path.join(sim_dir, run_number, f'sample_{file_name}') if USE_EXISTING else None
-    if USE_EXISTING and os.path.exists(sim_path):
+    # Try two path layouts:
+    #   1. {SIM_DIR}/{run_number}/sample_{cond}  (generate_simulations.sh layout)
+    #   2. {SIM_DIR}/sample_{cond}               (flat layout, no run subdirs)
+    sim_path = None
+    if USE_EXISTING:
+        candidate_1 = os.path.join(sim_dir, run_number, f'sample_{file_name}')
+        candidate_2 = os.path.join(sim_dir, f'sample_{file_name}')
+        if os.path.exists(candidate_1):
+            sim_path = candidate_1
+        elif os.path.exists(candidate_2):
+            sim_path = candidate_2
+        else:
+            print(f"  WARNING: simulation not found at either:")
+            print(f"    {candidate_1}")
+            print(f"    {candidate_2}")
+            print(f"  Generating fresh simulation.")
+
+    if sim_path is not None:
         # Reuse the exact ClonalGE simulation object → proper paired comparison
         print(f"Loading existing simulation from {sim_path}")
         # Add ClonalGE to path so the ClonalGE simulation class unpickles correctly
@@ -137,8 +153,6 @@ for cfg_path in sorted(glob.glob(os.path.join(config_dir, "*.json"))):
         sample_1 = pickle.load(open(sim_path, 'rb'))
         print(f"  Loaded: K={sample_1.K}, S={sample_1.S}, I={sample_1.I}")
     else:
-        if USE_EXISTING:
-            print(f"  WARNING: {sim_path} not found — generating fresh simulation")
         print(f"Generating simulated data (target mean_read ~{mean_read}) ...")
         attempts = 0
         while True:
