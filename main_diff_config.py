@@ -56,8 +56,8 @@ pi_2D = True
 th = 0.8 # threshhold for Z
 constants.VISUALIZATION = 'visualization'
 
-constants.CHAINS = 1
-constants.CORES = 35
+constants.CHAINS = int(os.environ.get('CLONALGE_CHAINS', 1))
+constants.CORES  = int(os.environ.get('CLONALGE_CORES',  min(constants.CHAINS, 10)))
 every_n_sample = 5
 changes_batch = 500
 
@@ -222,6 +222,13 @@ for file in glob.glob(config_file + "/*.json"):
     chain_best = cl_all[np.argmax(logliks)]
     chain_best.H = 0
     pickle.dump(chain_best, open(f'{constants.RESULTS}/best_oo{constants.CHAINS}_{file_name}', 'wb'))
+
+    # Append mean of true values to results txt (used for rMAE = SEE / mean_true)
+    with open(result_txt + file_name + '.txt', 'a') as _f:
+        _f.write(f'\nMean of true H:\n{np.mean(sample_1.H)}\n')
+        _f.write(f'Mean of true phi:\n{np.mean(sample_1.phi)}\n')
+        _f.write(f'Mean of true n:\n{np.mean(sample_1.n)}\n')
+        _f.write(f'Mean of true B:\n{np.mean(sample_1.B)}\n')
 
     if constants.CHAINS > 1:
         dir_out = dir_results + '/Results_plots'
