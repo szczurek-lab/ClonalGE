@@ -13,7 +13,6 @@ PYTHON="/path/to/conda/envs/clonalge/bin/python"
 export CLONALGE_CHAINS=5
 export CLONALGE_CORES=5
 
-CONFIG_DIR="configs"
 NOISE=0
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
@@ -23,12 +22,15 @@ echo "Chains : $CLONALGE_CHAINS"
 echo "Cores  : $CLONALGE_CORES"
 echo ""
 
+# cd into ClonalGE dir so config paths stay relative (main_diff_config.py
+# uses re.split("/|.json") which breaks on absolute paths)
+cd "$SCRIPT_DIR"
+
 for RUN in $(seq 1 20); do
     echo "========================================"
     echo " Run $RUN / 20"
     echo "========================================"
-    "$PYTHON" "$SCRIPT_DIR/main_diff_config.py" \
-        "$RUN" "$OUTPUT_DIR" "$SCRIPT_DIR/$CONFIG_DIR" "$NOISE"
+    "$PYTHON" main_diff_config.py "$RUN" "$OUTPUT_DIR" configs/ "$NOISE"
     echo ""
 done
 
