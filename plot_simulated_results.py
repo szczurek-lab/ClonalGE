@@ -86,9 +86,14 @@ def load_all_results(results_dir, num_runs):
 
     for run in range(1, num_runs + 1):
         for cond in CONDITIONS:
+            # Support two layouts:
+            #   subdir:  {results_dir}/{run}/results_{cond}.txt   (ClonalGE)
+            #   appended: {results_dir}{run}/results_{cond}.txt   (Tumoroscope)
             fpath = os.path.join(results_dir, str(run), f'results_{cond}.txt')
             if not os.path.exists(fpath):
-                print(f'  MISSING: {fpath}')
+                fpath = results_dir.rstrip('/') + str(run) + f'/results_{cond}.txt'
+            if not os.path.exists(fpath):
+                print(f'  MISSING: run {run} {cond}')
                 continue
             vals = parse_results_file(fpath)
             for m in METRICS_ALL + ['n_SEE']:
