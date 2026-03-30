@@ -4,10 +4,8 @@
 #
 # Usage: bash run_clonalge_5chains.sh
 #
-# ── TODO: set these paths ────────────────────────────────────────────────────
-OUTPUT_DIR="/path/to/Results_simulated_5chains/"
-PYTHON="/path/to/conda/envs/clonalge/bin/python"
-# ─────────────────────────────────────────────────────────────────────────────
+OUTPUT_DIR="./Results_simulated_5chains/"
+PYTHON="/home/shafighi/miniforge3/envs/clonalge/bin/python"
 
 # 5 chains, 5 parallel workers
 export CLONALGE_CHAINS=5
