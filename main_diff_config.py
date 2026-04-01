@@ -248,7 +248,7 @@ for file in glob.glob(config_file + "/*.json"):
             axes[2, c].scatter(sample_1.n, t.inferred_n)
             axes[2, c].set_xlabel('True N')
             axes[2, c].set_ylabel('Inferred N')
-            axes[3, c].scatter(sample_1.B, t.inferred_B)
+            axes[3, c].scatter(sample_1.B, cl_all[c].inferred_B)
             axes[3, c].set_xlabel('True B')
             axes[3, c].set_ylabel('Inferred B')
         plt.tight_layout()
