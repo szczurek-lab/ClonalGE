@@ -10,9 +10,9 @@
 # Task ID mapping: task = (rep-1)*15 + param_idx*5 + factor_idx + 1
 
 # ── Adjust these paths ────────────────────────────────────────────────────────
-BASE=/path/to/ClonalGE/data          # directory containing test_sim/ and sensitivity_results/
-CODE=/path/to/ClonalGE               # directory containing run_sensitivity_one.py, clonalGE.py, etc.
-PYTHON=python                        # python executable (conda activate your env first)
+BASE=$(pwd)   # directory containing test_sim/ and sensitivity_results/
+CODE=$(pwd)   # directory containing run_sensitivity_one.py, clonalGE.py, etc.
+PYTHON=python
 # ─────────────────────────────────────────────────────────────────────────────
 
 mkdir -p "$CODE/logs"

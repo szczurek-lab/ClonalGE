@@ -4,8 +4,8 @@
 # Default: run all 45 at once. Pass a number to cap concurrency (e.g. 20).
 
 # ── Adjust these paths ────────────────────────────────────────────────────────
-BASE=/path/to/ClonalGE/data     # directory containing test_sim/ and sensitivity_results/
-CODE=/path/to/ClonalGE          # directory containing run_sensitivity_one.py
+BASE=$(pwd)   # directory containing test_sim/ and sensitivity_results/
+CODE=$(pwd)   # directory containing run_sensitivity_one.py
 PYTHON=python
 # ─────────────────────────────────────────────────────────────────────────────
 

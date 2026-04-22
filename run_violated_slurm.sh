@@ -12,9 +12,9 @@
 # Index 41-60 → batch,   run 1-20
 
 # ── Adjust these paths ────────────────────────────────────────────────────────
-BASE=/path/to/ClonalGE/data          # directory containing test_sim_violated/ and Results_violated_*/
-CODE=/path/to/ClonalGE               # directory containing main_violated.py, clonalGE.py, etc.
-PYTHON=python                        # python executable
+BASE=$(pwd)   # directory containing test_sim_violated/ and Results_violated_*/
+CODE=$(pwd)   # directory containing main_violated.py, clonalGE.py, etc.
+PYTHON=python
 # ─────────────────────────────────────────────────────────────────────────────
 
 mkdir -p "$CODE/logs"

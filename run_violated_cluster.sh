@@ -4,8 +4,8 @@
 # Default: run all 60 at once. Pass a number to cap concurrency (e.g. 20).
 
 # ── Adjust these paths ────────────────────────────────────────────────────────
-BASE=/path/to/ClonalGE/data     # directory containing test_sim_violated/ and Results_violated_*/
-CODE=/path/to/ClonalGE          # directory containing main_violated.py
+BASE=$(pwd)   # directory containing test_sim_violated/ and Results_violated_*/
+CODE=$(pwd)   # directory containing main_violated.py
 PYTHON=python
 # ─────────────────────────────────────────────────────────────────────────────
 
