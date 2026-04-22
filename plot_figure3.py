@@ -87,8 +87,12 @@ def select_within_run(prefix, run, section, threshold):
               if i == best or pearsonr(ref_H, c.inferred_H.flatten())[0] > threshold]
     H_mean = np.mean([chains[i].inferred_H for i in sel], axis=0)
     B_mean = np.mean([chains[i].inferred_B for i in sel], axis=0)
-    # pool raw MCMC B samples from selected chains  (n_samples, K, g)
-    B_samp = np.concatenate([chains[i].B_sum for i in sel], axis=0)
+    # pool batch-mean pseudo-samples from selected chains  (n_batches_total, K, g)
+    # B_sum entries are batch sums; dividing by batch_n converts to batch means.
+    # Fall back to 1 for chains saved before batch_n was stored — comparison
+    # direction is preserved regardless of scale.
+    batch_n = getattr(chains[sel[0]], 'batch_n', 1)
+    B_samp = np.concatenate([chains[i].B_sum / batch_n for i in sel], axis=0)
     return H_mean, B_mean, B_samp
 
 

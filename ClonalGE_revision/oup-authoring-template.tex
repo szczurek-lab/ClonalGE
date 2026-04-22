@@ -63,6 +63,13 @@
 \usepackage[T1]{fontenc}
 \usepackage{lmodern}
 \usepackage{xcolor}
+\usepackage{booktabs} 
+\usepackage{siunitx}
+
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{makecell}
+
 \definecolor{revisionblue}{RGB}{0,0,139}
 \newcommand{\rev}[1]{{\color{revisionblue}#1}}
 
@@ -168,7 +175,7 @@ For cancerous spot identification, the regions containing cancer cells were anno
 Cells in the cancerous spots were counted using another custom script in QuPath. The script accepts input in the form of coordinates and diameters of spots to define target regions. Subsequently, QuPath's built-in algorithm is utilized to detect and enumerate nuclei. The algorithm's parameters were optimized by matching the output counts with manual cell count within randomly selected spots. 
 
 \subsection*{Somatic mutation calling from DNA-seq data}
-We called somatic point mutations  using Vardict~\citep{lai2016vardict}.  The final set of  mutations contained variants called with a p-value threshold equal to 0.1 in at least one of the DNA-seq sections (i.e., the set of mutations was the union over mutations found in individual sections). \rev{Initially, [TODO: insert number] somatic mutations were called across all sections. After filtering for presence in both DNA-seq and ST data, [TODO: insert number] mutations remained and were used for downstream analysis.}
+We called somatic point mutations  using Vardict~\citep{lai2016vardict}.  The final set of  mutations contained variants called with a p-value threshold equal to 0.1 in at least one of the DNA-seq sections (i.e., the set of mutations was the union over mutations found in individual sections). \rev{Initially, 2104 somatic mutations were called across all sections. After filtering for presence in both DNA-seq and ST data, 280 mutations remained and were used for downstream analysis.}
 
 \subsection*{Extraction of read count data for  somatic mutations that were detected both in DNA-seq and ST data}
 We selected the mutations for which at least one alternated read in at least one section was found. Calculation of the the total and alternated reads over the mutations in ST data was done by a script provided by~\cite{shafighi2024integrative}, which finds the selected DNA-seq mutations in the ST bam files and counts the corresponding mapped reads.  We next gave the alternated and total read counts in DNA-seq data as input to the method of phylogenetic tree inference. Finally, we gave the alternated and total read counts in ST data for the same mutations as input to the ClonalGE model. 
@@ -293,10 +300,10 @@ We examine the convergence of the MCMC for ClonalGE by using  Geweke's convergen
 For the real data, we compute final values of the inferred variables using multiple chains. Specifically, we run the model 10 times, each time with 10 chains. Then, from each run we select the chain with the highest likelihood, and all chains that obtained similar results. We consider two chains similar if the Pearson correlation between the inferred $H_{sk}$ values is higher than $0.9$. If the chain with the highest likelihood does not have any other similar chains, we omit it. Afterward, we take an average out of all the chains that are similar to the one with the highest likelihood out of the remaining chains.
 
 \subsection*{Differential gene expression analysis between clones}
-We obtain distributions of the inferred gene expression per each clone $k$ and gene $g$ by selecting every 1000-th $B_{kg}$ sample after a burn-in period of 5000 iterations, from the chains that agreed on the inferred $H_{sk}$ values. \rev{We then estimate the posterior probability of differential expression directly from the MCMC samples. Specifically, for each gene $g$ and each pair of clones $(k_1, k_2)$, we compute:
+\rev{We obtain posterior pseudo-samples of the inferred gene expression per clone $k$ and gene $g$ using batch means computed from the post-convergence MCMC iterations. Specifically, the post-burn-in iterations are divided into batches of $b$ MCMC steps; within each batch the $b/t$ thinned $B_{kg}$ values (thinning factor $t$) are averaged to form one batch-mean pseudo-sample vector per chain. These batch-mean pseudo-samples are pooled across all consensus-selected chains and runs, yielding a set of $S$ posterior pseudo-samples in total. For each gene $g$ and each pair of clones $(k_1, k_2)$, we then estimate the posterior probability of differential expression as:
 $$P(B_{k_1,g} > B_{k_2,g} \mid \text{Data}) \approx \frac{S_{>}}{S},$$
-where $S$ is the total number of post-burn-in samples and $S_{>}$ is the count of samples in which $B_{k_1,g} > B_{k_2,g}$. A gene is considered differentially expressed between two clones when this posterior probability exceeds $0.95$ (or falls below $0.05$). This Bayesian approach is coherent with the probabilistic framework of ClonalGE and provides a directly interpretable measure of evidence for clone-specific differential expression. We compute this statistic} for each pair of clones, excluding the normal clone 1, and each gene from a given set of $n$ genes.
-% Old approach using Wilcoxon rank-sum test replaced with Bayesian posterior probability
+where $S_{>}$ is the number of pseudo-samples in which $B_{k_1,g} > B_{k_2,g}$. A gene is considered differentially expressed between two clones when this posterior probability exceeds $0.95$ (or falls below $0.05$). This Bayesian approach is coherent with the probabilistic framework of ClonalGE and provides a directly interpretable measure of evidence for clone-specific differential expression. We compute this statistic} for each pair of clones, excluding the normal clone 1, and each gene from a given set of $n$ genes.
+% Updated: batch-mean pseudo-samples replace the earlier "every 1000-th sample" description
 
 \subsection*{Computing the expected gene expression values across spots based on the inferred clonal gene expression profiles}
 %We use a regression model for estimating the average clonal gene expression by a python function $scipy.optimize.lsq\_linear$ as it proposed in Tumoroscope~\cite{shafighi2024integrative}. 
@@ -356,7 +363,7 @@ similarly to~\cite{shafighi2024integrative}, we used linear regression (LR) with
 Overall, both ClonalGE and ClonalGE 5 chains obtained significantly better results compared to Tumoroscope + LR in all simulation setups (Fig.~\ref{fig:perfsim}). In particular, ClonalGE obtained much more accurate estimates of gene expression values in clones (Fig.~\ref{fig:perfsim}a). This result confirms that the joint modeling of the gene expression values
 with the mutation read counts as performed in ClonalGE gives increased statistical strength and yields higher performance than the double step procedure employed by combining Tumoroscope with linear regression. This advantage may also come from the appropriate model of the Negative Binomial distribution for the expression data per gene and spot employed by ClonalGE, in contrast to linear regression.
 
-\rev{To disentangle the contribution of the Negative Binomial distribution from the benefit of joint inference, we additionally compared ClonalGE against Tumoroscope followed by Negative Binomial regression (Tumoroscope + NB), where gene expression per clone is estimated using a Negative Binomial generalized linear model with weights fixed to the Tumoroscope-inferred clone fractions. While Tumoroscope + NB improves upon Tumoroscope + LR for gene expression estimation (Fig.~\ref{fig:perfsim}a), ClonalGE still achieves superior accuracy across all variables. This confirms that the integrated probabilistic inference framework provides benefits beyond adopting a more appropriate count distribution in a post-processing step (Fig.~[TODO: update figure reference]).}
+\rev{To disentangle the contribution of the Negative Binomial distribution from the benefit of joint inference, we additionally compared ClonalGE against Tumoroscope followed by Negative Binomial regression (Tumoroscope + NB), where gene expression per clone is estimated using a Negative Binomial generalized linear model with weights fixed to the Tumoroscope-inferred clone fractions. While Tumoroscope + NB improves upon Tumoroscope + LR for gene expression estimation (Fig.~\ref{fig:perfsim}a), ClonalGE still achieves superior accuracy across all variables. This confirms that the integrated probabilistic inference framework provides benefits beyond adopting a more appropriate count distribution in a post-processing step (Fig.~\ref{fig:perfsim}).}
 
 Interestingly, ClonalGE also outperforms Tumoroscope in the functionality that is shared between these two models: inference of the fraction of clones in spots (Fig.~\ref{fig:perfsim}b), numbers of cells in spots (Fig.~\ref{fig:perfsim}c), and read coverages per mutation per cell (Fig.~\ref{fig:perfsim}d). 
 %by keeping the inferred number of reads close to the true, simulated values for {\it basic} and {\it low expression variance} setups. 
@@ -394,7 +401,7 @@ For running the model on the prostate cancer dataset, we used the same procedure
 Finally, after inferring the gene expression profile of the clones, we ranked the genes based on the maximum expression variance of the genes across the clones in the inferred clone-specific gene expression profiles. Afterwards, we selected top 30 genes and plotted the normalized expression across the clones (Fig. \ref{fig:B_selected}a). According to the Human Protein Atlas ~\citep{ponten2008human}, top 9 out of 30 ranked genes ({\it MSMB}, {\it SPON2}, {\it KLK3}, {\it KLK2}, {\it NPDC1}, {\it TRPM4}, {\it TAGLN}, {\it CLDN3}, {\it SPDEF}, {\it KLK4}) were found to have elevated expression in all prostate cancer tissues and can be referred to as "prostate enhanced genes". %We found that 18 out of 30 genes, and 5 out of 9 prostate enhanced genes are found by \cite{shafighi2024integrative} as well.
 Among these prostate enhanced genes, there are 4 genes ({\it NPDC1}, {\it TRPM4}, {\it CLDN3}, {\it SPDEF}) that were not observed in the top ranked genes (with the highest inferred expression) found previously  for the same dataset by Tumoroscope.
 
-\rev{Several of the top clone-specific genes have well-established roles in prostate cancer biology. {\it KLK3}, {\it KLK2}, and {\it KLK4} belong to the kallikrein family, which is central to prostate cancer diagnostics (PSA is encoded by {\it KLK3}) and has been implicated in tumor progression through androgen receptor signaling. Their differential expression across clones suggests clonal heterogeneity in androgen receptor activity. {\it MSMB}, encoding a prostate secretory protein, has been identified as a tumor suppressor in prostate cancer, and its variable expression across clones may reflect different stages of malignant progression. {\it CLDN3} (Claudin-3) is involved in tight junction formation and has been implicated in epithelial-to-mesenchymal transition in prostate cancer. To further characterize clone-specific gene sets, we performed Gene Set Enrichment Analysis (GSEA) using gene rankings based on the posterior probabilities $P(B_{k,g} > B_{\text{other},g} \mid \text{Data})$ for each clone [TODO: add GSEA results and reference to supplementary figure].}
+\rev{Several of the top clone-specific genes have well-established roles in prostate cancer biology. {\it KLK3}, {\it KLK2}, and {\it KLK4} belong to the kallikrein family, which is central to prostate cancer diagnostics (PSA is encoded by {\it KLK3}) and has been implicated in tumor progression through androgen receptor signaling. Their differential expression across clones suggests clonal heterogeneity in androgen receptor activity. {\it MSMB}, encoding a prostate secretory protein, has been identified as a tumor suppressor in prostate cancer, and its variable expression across clones may reflect different stages of malignant progression. {\it CLDN3} (Claudin-3) is involved in tight junction formation and has been implicated in epithelial-to-mesenchymal transition in prostate cancer. To further characterize clone-specific gene sets, we performed Gene Set Enrichment Analysis (GSEA) using gene rankings based on the posterior probabilities $P(B_{k,g} > B_{\text{other},g} \mid \text{Data})$ for each clone (Supplementary Figure~\ref{fig:gsea}).}
 
 \subsection*{MCMC samples from ClonalGE enable differential gene expression analysis between clones}
 \rev{We computed the posterior probability of differential expression $P(B_{k_1,g} > B_{k_2,g} \mid \text{Data})$ for each pair of clones directly from the MCMC samples} (Methods; Fig. \ref{fig:B_selected}b).
@@ -432,6 +439,176 @@ We observed a much better agreement between the true gene expression values acro
 \rev{We note that this comparison evaluates the relative quality of model fit, as both methods use the observed gene expression $Y_{sg}$ during inference. Nevertheless, the comparison remains meaningful: both methods are fitted to the same data, yet achieve different levels of agreement, reflecting differences in how well each model captures the structure of spatial gene expression patterns. An ideal external validation would involve comparison against matched single-cell RNA sequencing data providing independent clone-specific expression profiles. While such orthogonal data are not available for this sample, the superior fit achieved by ClonalGE demonstrates that the integrated probabilistic framework models the spatial gene expression signal more accurately than the two-step approach.}
 
 
+% ------ FIGURE -----------------------------------------------
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\linewidth]{figures/stdeconvolve_comparison_figure.pdf}
+  \caption{%
+    \textbf{ClonalGE recovers clonal composition and clone-specific gene
+    expression more accurately than the reference-free baseline STdeconvolve
+    across all simulation settings.}
+    %
+    Boxplots show the Mean Absolute Error (MAE) over 20 independent simulation
+    replicates for clone proportion estimation ($H$, left) and normalised
+    clone-specific gene expression ($B$, right) under three simulation
+    configurations: Normal, Low Variance, and High Coverage.
+    %
+    Fold-improvements of ClonalGE over STdeconvolve are annotated above each
+    configuration group.
+    %
+    Lower values indicate better recovery of the ground truth.
+  }
+  \label{fig:stdeconvolve_comparison}
+\end{figure}
+
+% ------ TABLE ------------------------------------------------
+
+%Comparison of clone recovery accuracy between ClonalGE and STdeconvolve on simulated data (20 replicates per configuration). Values are mean \(\pm\) standard deviation of the Mean Absolute Error (MAE) across replicates.
+    %\(H\) MAE measures clone proportion recovery (lower is better);
+    %\(B\) MAE measures normalised clone-specific gene expression recovery
+    %(lower is better; both methods' \(B\) matrices are row-normalised to enable scale-free comparison). Fold-improvement indicates how many times lower the ClonalGE error is relative to STdeconvolve.
+
+
+\begin{table}[H]
+  \centering
+  \caption{%
+    Clone proportion recovery (\(H\) MAE; lower is better).
+    Values are mean \(\pm\) standard deviation across 20 replicates.
+    Fold-improvement shows how many times lower ClonalGE error is relative to STdeconvolve.
+  }
+  \label{tab:h_mae_comparison}
+  \small
+  \begin{tabular}{l c c c}
+    \toprule
+    Configuration
+      & {ClonalGE}
+      & {STdeconvolve}
+      & {Fold\(\uparrow\)} \\
+    \midrule
+    Normal
+      & \(0.0301 \pm 0.0107\)
+      & \(0.0682 \pm 0.0187\)
+      & \(2.3\times\) \\
+    Low Variance
+      & \(0.0174 \pm 0.0021\)
+      & \(0.0463 \pm 0.0165\)
+      & \(2.7\times\) \\
+    High Coverage
+      & \(0.0191 \pm 0.0018\)
+      & \(0.0683 \pm 0.0241\)
+      & \(3.6\times\) \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\begin{table}[H]
+  \centering
+  \caption{%
+    Clone-specific gene expression recovery (\(B\) MAE, row-normalised; lower is better).
+    Values are mean \(\pm\) standard deviation across 20 replicates.
+    Fold-improvement shows how many times lower ClonalGE error is relative to STdeconvolve.
+  }
+  \label{tab:b_mae_comparison}
+  \small
+  \begin{tabular}{l c c c}
+    \toprule
+    Configuration
+      & {ClonalGE}
+      & {STdeconvolve}
+      & {Fold\(\uparrow\)} \\
+    \midrule
+    Normal
+      & \(0.0015 \pm 0.0002\)
+      & \(0.0045 \pm 0.0018\)
+      & \(3.0\times\) \\
+    Low Variance
+      & \(0.0006 \pm 0.0001\)
+      & \(0.0032 \pm 0.0016\)
+      & \(5.2\times\) \\
+    High Coverage
+      & \(0.0014 \pm 0.0001\)
+      & \(0.0045 \pm 0.0026\)
+      & \(3.2\times\) \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+% ------ RESULTS TEXT -----------------------------------------
+\subsection*{Comparison with a reference-free expression deconvolution baseline}
+
+To address the question of whether purely expression-based deconvolution
+methods can recover clonal structure, we benchmarked ClonalGE against
+STdeconvolve~\cite{miller2022stdeconvolve}, the closest methodologically
+appropriate baseline among reference-free approaches.
+%
+STdeconvolve applies Latent Dirichlet Allocation (LDA) to spatial gene
+expression counts without requiring any external reference, and outputs
+per-spot topic proportions ($\hat{\theta}$) and per-topic gene expression
+profiles ($\hat{\beta}$), which are structurally analogous to ClonalGE's
+inferred clone proportions~$H$ and clone-specific expression matrix~$B$,
+respectively.
+%
+Critically, unlike the methods commonly used for cell-type deconvolution
+in spatial transcriptomics (e.g.\ RCTD, Cell2location, SPOTlight,
+Stereoscope, STRIDE), STdeconvolve requires no paired single-cell
+RNA-sequencing reference, making it the only existing method that can
+be applied under comparable data conditions to ClonalGE.
+%
+Furthermore, none of the reference-based deconvolution methods model
+somatic mutations or clonal identity; their decomposition targets
+bulk cell-type mixing, not the tumour clone structure inferred
+by ClonalGE, which fundamentally precludes a meaningful comparison.
+
+We evaluated both methods on 20 independent simulation replicates across
+three simulation configurations that vary in expression variance and
+sequencing depth (Normal, Low Variance, High Coverage; see Methods).
+%
+In all cases, the ground truth clone composition matrix $H^{\text{true}}$
+(spots~$\times$~clones) and clone-specific expression matrix $B^{\text{true}}$
+(clones~$\times$~genes) were known.
+%
+Since STdeconvolve's LDA topics are not inherently labelled, we resolved
+the clone--topic correspondence prior to evaluation using the Hungarian
+algorithm~\cite{kuhn1955hungarian}, which finds the permutation of predicted
+topics that minimises the total $H$~MAE relative to the ground truth --- the
+most favourable possible assignment for STdeconvolve.
+%
+To enable a scale-free comparison of $B$, both the ground truth $B^{\text{true}}$
+and the inferred matrices from both methods were row-normalised to unit sum,
+representing the relative gene expression profile per clone.
+
+Recovery accuracy was quantified using the Mean Absolute Error (MAE)
+for both $H$ and $B$.
+%
+ClonalGE achieved substantially lower $H$~MAE than STdeconvolve across
+all three configurations (Table~\ref{tab:stdeconvolve_comparison};
+Figure~\ref{fig:stdeconvolve_comparison}): \num{0.0301} vs.\ \num{0.0682}
+under the Normal setting (2.3-fold improvement), \num{0.0174} vs.\
+\num{0.0463} under Low Variance (2.7-fold), and \num{0.0191} vs.\
+\num{0.0683} under High Coverage (3.6-fold).
+%
+The advantage was even more pronounced for clone-specific expression
+recovery ($B$~MAE): ClonalGE achieved 3.0-, 5.2-, and 3.2-fold lower
+error in the Normal, Low Variance, and High Coverage settings,
+respectively.
+%
+The consistently larger improvement in the High Coverage setting is
+particularly informative: deeper sequencing amplifies the information
+content of the allele-frequency signal, which ClonalGE leverages
+through its mutation likelihood term but STdeconvolve cannot exploit.
+
+These results confirm that integrating somatic mutation data is not merely
+complementary to expression-based deconvolution, but is essential for
+accurately recovering tumour clonal composition in spatial transcriptomics
+data.
+%
+An expression-only approach, even under the most favourable conditions
+(known $K$, optimal topic matching), recovers clone proportions with
+2--4-fold higher error than ClonalGE, and fails to approach the accuracy
+achievable when the mutation genotype of each clone is incorporated.
+
+
+
+
 \section{Discussion}
 
 This study demonstrates that by a probabilistic approach to the integration of ST,   DNA-seq  and H\&E image data, we can robustly identify the tumor clones, their specific gene expression profiles and map the spatial distribution of these clones within a tissue. Moreover, the inferred gene expression profile distribution of the clones enables us to perform differential expression analysis based only on a single biological sample from the tumor. 
@@ -448,7 +625,7 @@ The ClonalGE model was determined to be superior to the framework where the pred
  
  Here, using ClonalGE on prostate cancer data, we were able to detect genes commonly found mutated in prostate cancer, and simultaneously infer their clone-specific expression. Our study indicates that there exist some key genes with variable activation across the clones. Moreover, we revealed a possible link between the location of the clones and their gene expression profiles. These results suggest that ClonalGE has the potential to be a valuable tool for bridging genomic and spatial heterogeneity with transcriptional plasticity, increasing our understanding of the genetic and transcriptional heterogeneity  of cancer and informing the development of targeted treatments.
  
- In our analysis, we  assumed that not all, but a subset of genes may show clone-specific gene expression. Accordingly, we estimated expression profiles of 1000 genes that had the most variable expression  across ST spots, presuming that these have the most potential to be clone-specific. Including non-specific genes in the analysis would result in the incorporation of noise and  could negatively affect the results. As an idea for future extension of the model, we could incorporate an additional hidden variable indicating whether the gene is clone specific or not. This information could then be inferred from the data. \rev{The per-iteration computational complexity of ClonalGE scales as $O(S \times K \times (I + G))$, where $S$ is the number of spots, $K$ the number of clones, $I$ the number of mutations, and $G$ the number of genes. Runtime analysis and scalability experiments are provided in the Supplementary Materials [TODO: add reference to supplementary runtime figure/table].}
+ In our analysis, we  assumed that not all, but a subset of genes may show clone-specific gene expression. Accordingly, we estimated expression profiles of 1000 genes that had the most variable expression  across ST spots, presuming that these have the most potential to be clone-specific. Including non-specific genes in the analysis would result in the incorporation of noise and  could negatively affect the results. As an idea for future extension of the model, we could incorporate an additional hidden variable indicating whether the gene is clone specific or not. This information could then be inferred from the data. \rev{The per-iteration computational complexity of ClonalGE scales as $O(S \times K \times (I + G))$, where $S$ is the number of spots, $K$ the number of clones, $I$ the number of mutations, and $G$ the number of genes. Runtime analysis and scalability experiments are provided in the Supplementary Materials (Supplementary Figure~\ref{fig:runtime} and Supplementary Table~\ref{tab:runtime}).}
 
 \rev{The resolution of clonal spatial mapping depends on the number of detectable somatic mutations shared between DNA-seq and ST data. Mutation sparsity may limit the ability to resolve fine-grained spatial patterns of clone distribution within tissue sections, which may explain the limited spatial structure observed for certain sections in the prostate cancer analysis. Future datasets with deeper sequencing and higher mutation counts could improve spatial resolution. Incorporating explicit spatial priors that account for the expected contiguity of clonal populations is a promising direction for future model development.}
 
@@ -628,6 +805,231 @@ Supplementary Figures~\ref{fig:chain_agreement}--\ref{fig:figure5_supp}.
     label switching rather than inferior predictive accuracy.%
   }
   \label{fig:figure5_supp}
+\end{figure*}
+
+\subsection*{Runtime analysis}
+\rev{We measured wall-clock runtimes across all simulation replicates and all
+real-data runs to characterise the computational demands of ClonalGE relative
+to its predecessor Tumoroscope.
+All experiments were executed on the same hardware (single workstation, CPU
+only), so runtimes are directly comparable across methods.}
+
+\paragraph{Simulated data.}
+For each of the three simulation setups (\textit{basic}, \textit{low
+expression variance}, \textit{high coverage}) we timed 20 independent
+replicates for each of the three methods: Tumoroscope, ClonalGE with a single
+MCMC chain (ClonalGE 1-chain), and ClonalGE with five parallel MCMC chains
+with best-chain selection (ClonalGE 5-chains).
+All methods used the same iteration bounds (minimum 10\,000, maximum 30\,000
+iterations, saved every 5th sample) and stopped early upon satisfying the
+99.5\% Geweke convergence criterion.
+Summary statistics (mean $\pm$ standard deviation and range) are given in
+Table~\ref{tab:runtime}; runtime distributions are shown in
+Supplementary Figure~\ref{fig:runtime}.
+
+\begin{figure*}[htbp]
+  \centering
+  \rev{\includegraphics[width=0.85\textwidth]{figures/figure_runtime.png}}
+  \caption{%
+    \textbf{Supplementary Figure~\ref{fig:runtime}: Runtime distributions for ClonalGE and Tumoroscope.}
+    \rev{Wall-clock runtimes (minutes) across 20 independent replicates for each
+    simulation configuration and method.
+    Box plots show median, interquartile range, and 1.5$\times$IQR whiskers;
+    individual replicates are overlaid as points.
+    Dashed vertical lines mark the median runtime of Tumoroscope for reference.
+    Outliers in ClonalGE conditions correspond to replicates that ran to the
+    maximum iteration bound (30\,000) before the Geweke convergence criterion
+    was satisfied.}
+  }
+  \label{fig:runtime}
+\end{figure*}
+
+
+\paragraph{Real prostate cancer data.}
+We ran ClonalGE on the prostate cancer dataset (294 spots, $K=4$ clones,
+$I$ mutations, $G=1000$ genes) 20 times with different random seeds, each
+time executing 10 parallel MCMC chains.
+The mean wall-clock time per run was $769.8 \pm 187.7$\,min
+(median 784.4\,min, range 520.3--1047.4\,min).
+
+
+\begin{table}[ht]
+\centering
+\rev{
+\caption{%
+\textbf{Wall-clock runtime of ClonalGE and Tumoroscope across all simulation
+conditions and on real prostate cancer data.}
+Values are mean\,$\pm$\,SD (range in parentheses) in minutes, computed over
+20 independent replicates for each simulation setup and method, and over 20
+independent runs for the real prostate data.
+All simulated experiments used the same iteration bounds (minimum 10\,000,
+maximum 30\,000 iterations) and the same 99.5\% Geweke convergence stopping
+criterion.
+The elevated mean and standard deviation for Tumoroscope in the
+\textit{basic} and \textit{low expression variance} conditions reflect
+slower and more variable convergence in the absence of gene expression
+information.
+For ClonalGE 5-chains, five MCMC chains were executed in parallel on
+separate CPU cores; total wall-clock time therefore scales sub-linearly with
+the number of chains.
+Runtimes exceeding $\approx$60\,min in the ClonalGE conditions (visible in
+the elevated maxima) correspond to runs that required the full 30\,000
+iterations before the convergence criterion was met.
+The \textit{high coverage} setup converges faster for all methods because
+higher read depth produces sharper likelihood gradients.
+For the real prostate cancer data (294 spots, $K=4$ clones, $G=1000$ genes),
+each run comprised 10 parallel MCMC chains; the substantially longer runtimes
+relative to simulated data reflect the ten-fold larger number of genes
+and the higher chain count.
+}
+\label{tab:runtime}
+\small
+\begin{tabular}{lccc}
+\hline
+\textbf{Method}
+  & \textbf{\textit{Basic}}
+  & \textbf{\textit{Low expression variance}}
+  & \textbf{\textit{High coverage}} \\
+\hline
+Tumoroscope
+  & $37.1 \pm 10.2$ (16.9--46.2)
+  & $41.5 \pm 9.7$ (16.8--47.1)
+  & $19.1 \pm 0.2$ (18.7--19.6) \\
+ClonalGE (1 chain)
+  & $21.9 \pm 0.1$ (21.7--22.1)
+  & $23.7 \pm 8.2$ (21.6--59.3)
+  & $23.7 \pm 0.1$ (23.3--24.0) \\
+ClonalGE (5 chains)
+  & $28.4 \pm 13.3$ (22.7--60.3)
+  & $22.8 \pm 0.2$ (22.6--23.2)
+  & $24.9 \pm 0.2$ (24.5--25.3) \\
+\hline
+\multicolumn{4}{l}{%
+\textit{Real data (prostate cancer, 10 chains per run):}
+$769.8 \pm 187.7$\,min (520.3--1047.4\,min), $n=20$ runs.} \\
+\hline
+\end{tabular}
+}
+\end{table}
+
+% Supplementary Table S1: ClonalGE model variables and parameters
+% Paste this into the supplementary section of oup-authoring-template.tex
+% Requires: \usepackage{booktabs}, \usepackage{array}, \usepackage{makecell}
+% (booktabs and array are standard in OUP template; add makecell to preamble if needed)
+
+% Supplementary Table S1: ClonalGE model variables and parameters
+% Paste this into the supplementary section of oup-authoring-template.tex
+% Requires: \usepackage{array}  (standard in OUP template)
+
+\begin{table*}[!ht]
+\caption{%
+  \textbf{Supplementary Table S1.}
+  Complete list of all variables and parameters in the ClonalGE model.
+  Index ranges: $k \in \{1,\ldots,K\}$ (clones), $s \in \{1,\ldots,S\}$ (spots),
+  $g \in \{1,\ldots,G\}$ (genes), $i \in \{1,\ldots,I\}$ (mutation loci),
+  $j \in \{1,\ldots,J\}$ (tissue sections).
+}\label{tab:variables}
+\renewcommand{\arraystretch}{1.35}
+% Column widths: symbol(1cm) | name(3.2cm) | dimension(1.8cm) | status(2.2cm) | description(fills rest)
+\begin{tabular}{@{} p{1cm} p{3.2cm} p{1.8cm} p{2.2cm} p{6.5cm} @{}}
+\hline
+\textbf{Symbol} & \textbf{Name} & \textbf{Dimension} & \textbf{Obs./Latent} & \textbf{Description} \\
+\hline
+\multicolumn{5}{@{}l}{\textit{Indices and dimensions}} \\
+\hline
+$K$ & Number of clones        & scalar & input & Number of clones inferred from DNA-seq \\
+$S$ & Number of spots         & scalar & input & Number of cancerous ST spots \\
+$G$ & Number of genes         & scalar & input & Number of genes analysed in ST data \\
+$I$ & Number of mutations     & scalar & input & Number of somatic SNV loci shared between DNA-seq and ST \\
+$J$ & Number of sections      & scalar & input & Number of tissue sections \\
+\hline
+\multicolumn{5}{@{}l}{\textit{Observed variables (given as input to the model)}} \\
+\hline
+$F_k$       & Clone frequency        & $K$     & observed & Frequency of clone $k$ in the whole sample, estimated from DNA-seq \\
+$C_{ik}$    & Clone genotype matrix  & $I \times K$ & observed & Fraction of alleles of clone $k$ carrying a mutation at locus $i$; values in $[0,1]$ \\
+$D_{is}$    & Total read depth       & $I \times S$ & observed & Total read count at mutation locus $i$ in spot $s$ from ST data \\
+$A_{is}$    & Alternated read count  & $I \times S$ & observed & Mutated (alternated) read count at locus $i$ in spot $s$ from ST data \\
+$Y_{sg}$    & Spot gene expression   & $S \times G$ & observed & UMI count of gene $g$ in spot $s$ from ST data \\
+$\Lambda_s$ & Expected cell count    & $S$     & observed & Cell count at spot $s$ estimated from H\&E images; used as Poisson rate for $N_s$ \\
+\hline
+\multicolumn{5}{@{}l}{\textit{Latent variables (inferred by Gibbs/MH sampling)}} \\
+\hline
+$\Pi_{sk}$  & Clone presence prior   & $S \times K$ & latent & Beta-distributed probability that clone $k$ is present in spot $s$ \\
+$Z_{sk}$    & Clone presence indicator & $S \times K$ & latent & Binary; $Z_{sk}=1$ if clone $k$ is present in spot $s$ \\
+$G_{sk}$    & Unnorm.\ clone abundance & $S \times K$ & latent & Gamma-distributed unnormalised abundance of clone $k$ in spot $s$ \\
+$H_{sk}$    & Clone fraction         & $S \times K$ & latent & Fraction of spot $s$ occupied by clone $k$; $H_{sk} = G_{sk}/\sum_l G_{sl}$ \\
+$\Phi_{ik}$ & Per-cell read rate     & $I \times K$ & latent & Average read count at locus $i$ per cell of clone $k$ \\
+$N_s$       & Cell count             & $S$     & latent & Number of cells in spot $s$; Poisson-distributed with rate $\Lambda_s$ \\
+$B_{kg}$    & Clonal gene expression & $K \times G$ & latent & Average expression of gene $g$ per cell in clone $k$; Gamma-distributed \\
+\hline
+\multicolumn{5}{@{}l}{\textit{Fixed hyperparameters and pre-estimated parameters}} \\
+\hline
+$\zeta_s$   & Clone-count hyperparam. & $S$  & hyperparameter & Controls expected number of clones per spot; shapes Beta prior on $\Pi_{sk}$ \\
+$F_0$       & Absent-clone pseudo-count & scalar & hyperparameter & Gamma shape for $G_{sk}$ when $Z_{sk}=0$; set to a small positive value \\
+$r$         & $\Phi$ shape hyperparam. & scalar & hyperparameter & Shape parameter of Gamma prior on $\Phi_{ik}$; estimated from data \\
+$q$         & $\Phi$ rate hyperparam.  & scalar & hyperparameter & Rate parameter of Gamma prior on $\Phi_{ik}$; estimated from data \\
+$\alpha_g$  & $B$ shape hyperparam.    & $G$   & hyperparameter & Per-gene shape parameter of Gamma prior on $B_{kg}$; estimated from data \\
+$\beta$     & $B$ rate hyperparam.     & scalar & hyperparameter & Rate parameter of Gamma prior on $B_{kg}$; estimated from data \\
+$p_g$       & NB success probability   & $G$   & hyperparameter & Success probability of Negative Binomial distribution for $Y_{sg}$; estimated from data \\
+$t_j$       & Section scaling factor   & $J$   & hyperparameter & Multiplicative scaling factor correcting for batch effects across section $j$ \\
+$\omega_B$  & $B$ variance correction  & scalar & hyperparameter & Correction constant for underestimation of $\beta$; fixed to $2$ \\
+$\omega_\phi$ & $\Phi$ variance correction & scalar & hyperparameter & Correction constant for underestimation of $r$; fixed to $2$ \\
+\hline
+\end{tabular}
+\end{table*}
+
+% ── Supplementary Figure: Hyperparameter sensitivity ───────────────────────
+\begin{figure*}[htbp]
+  \centering
+  \rev{\includegraphics[width=0.85\textwidth]{figures/sensitivity_analysis.png}}
+  \caption{%
+    \textbf{Supplementary Figure: Hyperparameter sensitivity of ClonalGE.}
+    \rev{Relative MAE for clone-fraction recovery ($H$, left) and clonal gene
+    expression recovery ($B$, right) as a function of hyperparameter perturbation
+    factor applied to $\alpha_g$ (Gamma shape of the $B$ prior; top row),
+    $\beta$ (Gamma rate of the $B$ prior; middle row), and $p_g$
+    (Negative Binomial success probability; bottom row).
+    Each boxplot summarises 3 independent simulation replicates of the
+    \textit{normal} configuration; the factor 1.0 (dashed line) corresponds to
+    the true (data-derived) hyperparameter value.}
+  }
+  \label{fig:sensitivity}
+\end{figure*}
+
+% ── Supplementary Figure: GSEA ─────────────────────────────────────────────
+\begin{figure*}[htbp]
+  \centering
+  \rev{\includegraphics[width=0.90\textwidth]{figures/gsea_results.png}}
+  \caption{%
+    \textbf{Supplementary Figure: Gene Set Enrichment Analysis (GSEA) for clone-specific gene expression.}
+    \rev{Pre-ranked GSEA results for each of the $K$ inferred clones (panels)
+    using MSigDB Hallmark gene sets.
+    Genes were ranked by the posterior probability
+    $P(B_{k,g} > \bar{B}_{\text{other},g} \mid \text{Data})$ that clone $k$
+    overexpresses gene $g$ relative to all other clones.
+    Normalised enrichment scores (NES) are shown for gene sets with
+    false-discovery-rate-adjusted $q < 0.25$.
+    Positive NES indicates enrichment among clone-specific over-expressed genes.}
+  }
+  \label{fig:gsea}
+\end{figure*}
+
+% ── Supplementary Figure: Assumption-violating simulations ─────────────────
+\begin{figure*}[htbp]
+  \centering
+  \rev{\includegraphics[width=0.85\textwidth]{figures/violated_simulations.png}}
+  \caption{%
+    \textbf{Supplementary Figure: ClonalGE performance under assumption-violating simulation conditions.}
+    \rev{Relative MAE for $H$ and $B$ under three conditions: (i) standard simulation
+    (ground truth, no assumption violations), (ii) zero-inflated Negative Binomial
+    gene expression (10\% zero-inflation rate), and (iii) section-level batch effects
+    (multiplicative factors drawn from $\text{Uniform}(0.5, 2.0)$).
+    Each boxplot shows 20 independent replicates; lower values indicate better
+    inference accuracy.
+    Results demonstrate that ClonalGE remains robust to moderate deviations from
+    the NB distributional assumption and to batch effects of this magnitude.}
+  }
+  \label{fig:violated}
 \end{figure*}
 
 \end{document}

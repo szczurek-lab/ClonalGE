@@ -156,6 +156,7 @@ class clonalGE:
         samples_count = int(np.round((iter + 1) / every_n_sample))
         batch_count = int(np.round((iter + 1) / batch))
         batch_n = int(round(batch / every_n_sample))
+        self.batch_n = batch_n
         print("The number of samples was " + str(samples_count))
 
         last_convergence = self.test_convergence_batches(self.H, iter, every_n_sample, batch_count, samples_count, batch_n)
