@@ -63,7 +63,7 @@ def rmae(inferred, true):
 
 import glob, re
 for cfg_path in glob.glob(config_dir + '/*.json'):
-    file_name = re.split('/|\.json', cfg_path)[1]  # e.g. 'normal'
+    file_name = os.path.splitext(os.path.basename(cfg_path))[0]
 
     with open(cfg_path) as f:
         data = json.load(f)
