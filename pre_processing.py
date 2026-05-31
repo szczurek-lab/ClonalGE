@@ -223,7 +223,7 @@ def plot_prior_inferred_n(n_lambda, inferred_n, section, visualization_dir):
     plt.savefig(visualization_dir + '/' + section + '_n_inferred.png', dpi=500)
     plt.close()
 
-    plt.style.use('seaborn-deep')
+    plt.style.use('seaborn-v0_8-deep' if 'seaborn-v0_8-deep' in plt.style.available else 'default')
     n_lists = [list(n_lambda), np.array(inferred_n.transpose()).tolist()]
     bins = np.linspace(0, np.max(n_lists), 30)
     plt.hist(n_lists, label=['Lambda', 'Inferred n'])
@@ -314,7 +314,7 @@ def generate_n_lambda(file,sections_n_file,barcode,n_sampling):
         n_s_data = n_barcode_merge(file,sections_n_file,barcode)
         print("generate_n_lambda - number of Nans/Infs:")
         print(np.sum(n_s_data.isin([np.nan, np.inf, -np.inf])))
-        n_s_data = n_s_data[~n_s_data.isin([np.nan, np.inf, -np.inf]).any(1)]
+        n_s_data = n_s_data[~n_s_data.isin([np.nan, np.inf, -np.inf]).any(axis=1)]
         #n_s_data = np.unique(n_s_data['barcode'])
         print(n_s_data[n_s_data['barcode'].duplicated()])
         spots_order = n_s_data['barcode']

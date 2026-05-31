@@ -1,6 +1,7 @@
 import visualization as vis
 from clonalGE import clonalGE
 import tumoroscope as tum
+import constants
 import pickle
 import numpy as np
 import random
@@ -9,9 +10,15 @@ import pandas as pd
 import json
 import sys
 import distutils.util
+from multiprocessing import get_context
 import seaborn as sns; sns.set_theme(color_codes=True)
 import pre_processing
 from scipy.optimize import lsq_linear
+
+
+def run_in_parallel(args):
+    cl_obj, gibbs_params = args
+    return cl_obj.gibbs_sampling(**gibbs_params)
 
 def main():
     genes_file = 'most_var_genes1000.txt'
@@ -71,12 +78,12 @@ def main():
         #df of selected spots
 
         n_s_data = pd.read_csv(move_dir + data['n_variation']['n_file'],sep=',')
-        n_s_data = n_s_data[~n_s_data.isin([np.nan, np.inf, -np.inf]).any(1)]
+        n_s_data = n_s_data[~n_s_data.isin([np.nan, np.inf, -np.inf]).any(axis=1)]
         n_s_data = n_s_data.drop_duplicates()
         n_s_data = n_s_data[n_s_data['type'].str.contains('Cancer')]
         if(n_s_data.barcode.duplicated().any()==True):
             n_s_data[n_s_data.barcode.duplicated()]=np.nan
-            n_s_data = n_s_data[~n_s_data.isin([np.nan, np.inf, -np.inf]).any(1)]
+            n_s_data = n_s_data[~n_s_data.isin([np.nan, np.inf, -np.inf]).any(axis=1)]
             print("There are duplications in the barcode(probably different types)")
   
         st_wes_selected_spots = st_wes[st_wes['spot'].isin(n_s_data['barcode'])]
@@ -158,7 +165,7 @@ def main():
             np.savetxt(m_file, np.unique(A_df["i"]), fmt='%s')
             expr_data.to_csv(result_dir+'/expr.csv', index=True,sep='\t')
 
-        n_s_data['nuclei'][n_s_data['nuclei']==0]=1
+        n_s_data.loc[n_s_data['nuclei']==0, 'nuclei'] = 1
 
         A_df = A_df[A_df['s'].isin(A.columns)]
         A_df = A_df[A_df['i'].isin(A.index)]
@@ -267,9 +274,9 @@ def main():
                                 gamma=data['theta']['gamma'], pi_2D=data['structure']['pi_2D'],
                                 result_txt=result_txt, rp_est_method='my')
 
-        tum_0.gibbs_sampling(seed=seed, min_iter=int(np.int(data['sampling']['min_iter'])/1.5), 
-                             max_iter=int(np.int(data['sampling']['max_iter'])/2), 
-                             burn_in=np.int(data['sampling']['burn_in']), batch=np.int(data['sampling']['batch']),
+        tum_0.gibbs_sampling(seed=seed, min_iter=int(int(data['sampling']['min_iter'])/1.5),
+                             max_iter=int(int(data['sampling']['max_iter'])/2),
+                             burn_in=int(data['sampling']['burn_in']), batch=int(data['sampling']['batch']),
                              simulated_data=None, n_sampling=data['n_variation']['n_sampling'], 
                              F_fraction=data['Gamma']['F_fraction'], theta_variable=data['theta']['theta_variable'],
                              pi_2D=data['structure']['pi_2D'], th=data['Z_variation']['threshold'], 
@@ -277,24 +284,44 @@ def main():
                              changes_batch=data['sampling']['changes_batch'], 
                              var_calculation=False)
 
+        # Save Tumoroscope H and N for post-hoc regression comparison (Figure 5 panel a)
+        np.save(result_dir + '/' + section + '_tum_h.npy', tum_0.inferred_H)
+        np.save(result_dir + '/' + section + '_tum_n.npy', tum_0.inferred_n)
+
         B = calc_B(Y, tum_0.inferred_H, tum_0.inferred_n)
         inits = (tum_0.inferred_n, tum_0.inferred_H, tum_0.inferred_G, tum_0.inferred_pi, tum_0.inferred_phi, tum_0.inferred_Z, B)
 
 
-        cl = clonalGE(name=result_obj, K=K, S=S, g=g, r=r, q=q, I=len(C_ik),
-                      avarage_clone_in_spot=data['Z_variation']['avarage_clone_in_spot'], F=F,
-                      C=C_ik.to_numpy(), A=A.to_numpy(), D=D.to_numpy(), F_epsilon=F_epsilon,
-                      optimal_rate=data['structure']['optimal_rate'], n_lambda=n_s_data['nuclei'].astype(float),
-                      pi_2D=data['structure']['pi_2D'],result_txt=result_txt,
-                      Y=Y, p_y=pred_p, b_alpha=pred_alpha, b_beta=pred_beta, t=pred_t, inits=inits)
+        gibbs_params = dict(
+            seed=seed, min_iter=int(data['sampling']['min_iter']),
+            max_iter=int(data['sampling']['max_iter']), batch=int(data['sampling']['batch']),
+            simulated_data=None, n_sampling=data['n_variation']['n_sampling'],
+            F_fraction=data['Gamma']['F_fraction'], pi_2D=data['structure']['pi_2D'],
+            th=data['Z_variation']['threshold'], every_n_sample=data['sampling']['every_n_sample'],
+            changes_batch=data['sampling']['changes_batch'])
 
-        cl.gibbs_sampling(seed=seed, min_iter=np.int(data['sampling']['min_iter']),
-                          max_iter=np.int(data['sampling']['max_iter']), batch=np.int(data['sampling']['batch']),
-                          simulated_data=None, n_sampling=data['n_variation']['n_sampling'],
-                          F_fraction=data['Gamma']['F_fraction'], pi_2D=data['structure']['pi_2D'],
-                          th=data['Z_variation']['threshold'], every_n_sample=data['sampling']['every_n_sample'],
-                          changes_batch=data['sampling']['changes_batch'])
-        pickle.dump(cl, open(result_obj, 'wb'))
+        B = calc_B(Y, tum_0.inferred_H, tum_0.inferred_n)
+        cl_objs = []
+        for cc in range(constants.CHAINS):
+            inits = (tum_0.inferred_n, tum_0.inferred_H, tum_0.inferred_G,
+                     tum_0.inferred_pi, tum_0.inferred_phi, tum_0.inferred_Z, B)
+            chain_params = dict(gibbs_params, seed=seed + cc)
+            cl_obj = clonalGE(name=result_obj + f'_chain_{cc}', K=K, S=S, g=g, r=r, q=q, I=len(C_ik),
+                              avarage_clone_in_spot=data['Z_variation']['avarage_clone_in_spot'], F=F,
+                              C=C_ik.to_numpy(), A=A.to_numpy(), D=D.to_numpy(), F_epsilon=F_epsilon,
+                              optimal_rate=data['structure']['optimal_rate'],
+                              n_lambda=n_s_data['nuclei'].astype(float),
+                              pi_2D=data['structure']['pi_2D'], result_txt=result_txt,
+                              Y=Y, p_y=pred_p, b_alpha=pred_alpha, b_beta=pred_beta, t=pred_t, inits=inits)
+            cl_objs.append((cl_obj, chain_params))
+
+        with get_context('forkserver').Pool(constants.CORES) as pool:
+            cl_all = pool.map(run_in_parallel, cl_objs)
+
+        for cc, c in enumerate(cl_all):
+            pickle.dump(c, open(result_obj + f'_chain_{cc}', 'wb'))
+
+        cl = cl_all[0]  # used by post_clonalGE / vis below
     else:
         print("loading existing object")
         cl = pickle.load(open(result_obj, 'rb'))

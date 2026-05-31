@@ -1,3 +1,9 @@
+import os
+os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
+os.environ.setdefault("OMP_NUM_THREADS", "1")
+os.environ.setdefault("MKL_NUM_THREADS", "1")
+os.environ.setdefault("BLAS_NUM_THREADS", "1")
+
 import visualization as vis
 from clonalGE import clonalGE
 import tumoroscope as tum
@@ -50,8 +56,8 @@ pi_2D = True
 th = 0.8 # threshhold for Z
 constants.VISUALIZATION = 'visualization'
 
-constants.CHAINS = 1
-constants.CORES = 35
+constants.CHAINS = int(os.environ.get('CLONALGE_CHAINS', 1))
+constants.CORES  = int(os.environ.get('CLONALGE_CORES',  min(constants.CHAINS, 10)))
 every_n_sample = 5
 changes_batch = 500
 
@@ -146,17 +152,17 @@ for file in glob.glob(config_file + "/*.json"):
     avarage_clone_in_spot = data['Z_variation']['avarage_clone_in_spot']
 
     if onLaptop == 'True':
-        max_iter = np.int(data['sampling']['max_iter']/10)
-        min_iter = np.int(data['sampling']['min_iter']/10)
-        burn_in = np.int(data['sampling']['burn_in']/10)
-        batch = np.int(data['sampling']['batch']/10)
-        var_calculation = np.int(data['sampling']['min_iter'] * 0.09)
+        max_iter = int(data['sampling']['max_iter']/10)
+        min_iter = int(data['sampling']['min_iter']/10)
+        burn_in = int(data['sampling']['burn_in']/10)
+        batch = int(data['sampling']['batch']/10)
+        var_calculation = int(data['sampling']['min_iter'] * 0.09)
     else:
-        max_iter = np.int(data['sampling']['max_iter'])
-        min_iter = np.int(data['sampling']['min_iter'])
-        burn_in = np.int(data['sampling']['burn_in'])
-        batch = np.int(data['sampling']['batch'])
-        var_calculation = np.int(data['sampling']['min_iter'] * 0.9)
+        max_iter = int(data['sampling']['max_iter'])
+        min_iter = int(data['sampling']['min_iter'])
+        burn_in = int(data['sampling']['burn_in'])
+        batch = int(data['sampling']['batch'])
+        var_calculation = int(data['sampling']['min_iter'] * 0.9)
 
     phi_gamma = np.array(data['Gamma']['phi_gamma'])
         # F could be None, In that case, it will be generated using dirichlet distribution
@@ -217,6 +223,13 @@ for file in glob.glob(config_file + "/*.json"):
     chain_best.H = 0
     pickle.dump(chain_best, open(f'{constants.RESULTS}/best_oo{constants.CHAINS}_{file_name}', 'wb'))
 
+    # Append mean of true values to results txt (used for rMAE = SEE / mean_true)
+    with open(result_txt + file_name + '.txt', 'a') as _f:
+        _f.write(f'\nMean of true H:\n{np.mean(sample_1.H)}\n')
+        _f.write(f'Mean of true phi:\n{np.mean(sample_1.phi)}\n')
+        _f.write(f'Mean of true n:\n{np.mean(sample_1.n)}\n')
+        _f.write(f'Mean of true B:\n{np.mean(sample_1.B)}\n')
+
     if constants.CHAINS > 1:
         dir_out = dir_results + '/Results_plots'
         if not os.path.exists(dir_out):
@@ -235,7 +248,7 @@ for file in glob.glob(config_file + "/*.json"):
             axes[2, c].scatter(sample_1.n, t.inferred_n)
             axes[2, c].set_xlabel('True N')
             axes[2, c].set_ylabel('Inferred N')
-            axes[3, c].scatter(sample_1.B, t.inferred_B)
+            axes[3, c].scatter(sample_1.B, cl_all[c].inferred_B)
             axes[3, c].set_xlabel('True B')
             axes[3, c].set_ylabel('Inferred B')
         plt.tight_layout()
@@ -264,12 +277,12 @@ for file in glob.glob(config_file + "/*.json"):
                     'n_SEE': chain_best.n_SEE,
                     'B_SEE': chain_best.B_SEE
                     }
-    result_df = result_df.append(best_dict, ignore_index=True)
+    result_df = pd.concat([result_df, pd.DataFrame([best_dict])], ignore_index=True)
 
 
     vis_1.likelihood_all(cl_all,'likelihood_all')
+    plt.close('all')
 
- 
 print(result_df)
 dir_out = dir_results + '/csv'
 if not os.path.exists(dir_out):

@@ -107,15 +107,15 @@ for file in glob.glob(config_file + "/*.json"):
     avarage_clone_in_spot = data['Z_variation']['avarage_clone_in_spot']
 
     if onLaptop == 'True':
-        max_iter = np.int(data['sampling']['max_iter']/10)
-        min_iter = np.int(data['sampling']['min_iter']/10)
-        # burn_in = np.int(data['sampling']['burn_in']/10)
-        batch = np.int(data['sampling']['batch']/10)
+        max_iter = int(data['sampling']['max_iter']/10)
+        min_iter = int(data['sampling']['min_iter']/10)
+        # burn_in = int(data['sampling']['burn_in']/10)
+        batch = int(data['sampling']['batch']/10)
     else:
-        max_iter = np.int(data['sampling']['max_iter'])
-        min_iter = np.int(data['sampling']['min_iter'])
-        # burn_in = np.int(data['sampling']['burn_in'])
-        batch = np.int(data['sampling']['batch'])
+        max_iter = int(data['sampling']['max_iter'])
+        min_iter = int(data['sampling']['min_iter'])
+        # burn_in = int(data['sampling']['burn_in'])
+        batch = int(data['sampling']['batch'])
 
     phi_gamma = np.array(data['Gamma']['phi_gamma'])
         # F could be None, In that case, it will be generated using dirichlet distribution
