@@ -1,2 +1,15 @@
 ClonalGE_OUP_Template_ISMB/
 ClonalGE revision.docx
+
+# Overleaf folder and revision-response documents — must not be pushed
+ClonalGE_revision/
+ClonalGE revision_final.docx
+ClonalGE_Revision_Response.docx
+ClonalGE_Task_Division.docx
+ClonalGE_revision.zip
+
+# Build / editor artifacts
+~$*
+*.pptx
+__pycache__/
+.DS_Store
