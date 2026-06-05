@@ -38,8 +38,9 @@ FS_BASE     = 7
 FS_ANNOT    = 5.0
 FS_TICK     = 6.0
 FS_TITLE    = 7.0
-FIG_W       = 5.6
-FIG_H       = 2.55
+# Figure size is computed dynamically from n_runs; these are per-cell dimensions
+CELL_SIZE   = 0.38   # inches per row/col in each heatmap panel
+FIG_MARGIN  = 2.0    # extra inches for colourbar, labels, legend
 
 CMAP        = 'Blues'
 VMIN, VMAX  = 0.0, 1.0
@@ -225,37 +226,47 @@ def make_synthetic(n_runs=10, S=55, K=4, g=150, seed=0):
 # ══════════════════════════════════════════════════════════════════════════════
 
 def draw_heatmap(ax, R_ord, order, new_ref, new_sel, n_sel, tick_labels,
-                 title, show_ylabel=True, xlabel='Run', ylabel='Run'):
+                 title, show_ylabel=True, xlabel='Run', ylabel='Run',
+                 annot_threshold=14):
+    """
+    annot_threshold: suppress per-cell r annotations when n > this value
+    (avoids illegible text in large matrices).
+    """
     n  = R_ord.shape[0]
     im = ax.imshow(R_ord, cmap=CMAP, vmin=VMIN, vmax=VMAX,
                    aspect='equal', interpolation='none')
+
+    show_annot = (n <= annot_threshold)
 
     for i in range(n):
         for j in range(n):
             if i == j:
                 continue
-            val     = R_ord[i, j]
-            txt_col = 'white' if val > 0.62 else '#333333'
-            ax.text(j, i, f'{val:.2f}', ha='center', va='center',
-                    fontsize=FS_ANNOT, color=txt_col, zorder=3)
+            if show_annot:
+                val     = R_ord[i, j]
+                txt_col = 'white' if val > 0.62 else '#333333'
+                ax.text(j, i, f'{val:.2f}', ha='center', va='center',
+                        fontsize=FS_ANNOT, color=txt_col, zorder=3)
 
     for i in range(n):
         ax.add_patch(plt.Rectangle(
             (i - 0.5, i - 0.5), 1, 1,
             facecolor=COL_DIAG, edgecolor='none', zorder=2))
-        ax.text(i, i, '—', ha='center', va='center',
-                fontsize=FS_ANNOT, color='#888888', zorder=3)
+        if show_annot:
+            ax.text(i, i, '—', ha='center', va='center',
+                    fontsize=FS_ANNOT, color='#888888', zorder=3)
 
     if 0 < n_sel < n:
         cut = n_sel - 0.5
-        ax.axhline(cut, color=COL_DIV, linewidth=0.6, linestyle='--', zorder=4)
-        ax.axvline(cut, color=COL_DIV, linewidth=0.6, linestyle='--', zorder=4)
+        ax.axhline(cut, color=COL_DIV, linewidth=0.8, linestyle='--', zorder=4)
+        ax.axvline(cut, color=COL_DIV, linewidth=0.8, linestyle='--', zorder=4)
 
     ordered_labels = [tick_labels[orig_pos] for orig_pos in order]
     ax.set_xticks(range(n))
     ax.set_yticks(range(n))
-    xlbls = ax.set_xticklabels(ordered_labels, fontsize=FS_TICK)
-    ylbls = ax.set_yticklabels(ordered_labels, fontsize=FS_TICK)
+    tick_fs = max(4.5, FS_TICK - max(0, n - 10) * 0.15)
+    xlbls = ax.set_xticklabels(ordered_labels, fontsize=tick_fs, rotation=90)
+    ylbls = ax.set_yticklabels(ordered_labels, fontsize=tick_fs)
 
     for pos, (xl, yl) in enumerate(zip(xlbls, ylbls)):
         is_sel  = pos in new_sel
@@ -265,7 +276,7 @@ def draw_heatmap(ax, R_ord, order, new_ref, new_sel, n_sel, tick_labels,
             lbl.set_color(col)
             lbl.set_fontweight('bold' if is_ref else 'normal')
 
-    ax.set_xlabel(xlabel, fontsize=FS_BASE, labelpad=2)
+    ax.set_xlabel(xlabel, fontsize=FS_BASE, labelpad=3)
     if show_ylabel:
         ax.set_ylabel(ylabel, fontsize=FS_BASE, labelpad=2)
     ax.set_title(title, fontsize=FS_TITLE, pad=4)
@@ -350,11 +361,17 @@ def main():
         'svg.fonttype':  'none',
     })
 
+    # Scale figure size — cap cell size so two 20×20 panels still fit on a page
+    cell = min(CELL_SIZE, 5.5 / n)
+    panel_side = n * cell
+    fig_w = 2 * panel_side + FIG_MARGIN
+    fig_h = panel_side + 1.2   # + space for title, x-labels, legend
+
     fig, axes = plt.subplots(
         1, 2,
-        figsize=(FIG_W, FIG_H),
-        gridspec_kw=dict(wspace=0.38, left=0.08, right=0.88,
-                         top=0.88, bottom=0.14),
+        figsize=(fig_w, fig_h),
+        gridspec_kw=dict(wspace=0.32, left=0.10, right=0.88,
+                         top=0.84, bottom=0.22),
     )
 
     im = draw_heatmap(axes[0], R_H_ord, order, new_ref, new_sel, n_sel,
@@ -365,7 +382,7 @@ def main():
                  show_ylabel=False, xlabel='Run', ylabel='Run')
 
     # ── shared colourbar ──────────────────────────────────────────────────────
-    cbar_ax = fig.add_axes([0.905, 0.18, 0.018, 0.70])
+    cbar_ax = fig.add_axes([0.905, 0.22, 0.018, 0.62])
     cb = fig.colorbar(im, cax=cbar_ax)
     cb.set_label('Pearson  r', fontsize=FS_BASE, labelpad=4)
     cb.ax.tick_params(labelsize=FS_TICK - 0.5, length=2, width=0.5)
@@ -376,7 +393,7 @@ def main():
     # ── legend ────────────────────────────────────────────────────────────────
     legend_els = [
         mpatches.Patch(color=COL_SEL,
-                       label=f'Selected  (r\u2009>\u2009{args.threshold})'),
+                       label=f'Selected  (r\u2009≥\u2009{args.threshold})'),
         mpatches.Patch(color=COL_EXC, label='Excluded'),
         mpatches.Patch(facecolor='none', edgecolor=COL_DIV,
                        linestyle='--', linewidth=0.8,
@@ -384,18 +401,19 @@ def main():
     ]
     fig.legend(handles=legend_els,
                fontsize=FS_BASE - 1, loc='lower center', ncol=3,
-               bbox_to_anchor=(0.46, -0.05), frameon=False,
+               bbox_to_anchor=(0.46, 0.0), frameon=False,
                handlelength=1.0, handletextpad=0.5, columnspacing=1.2)
 
-    # ── footnote ──────────────────────────────────────────────────────────────
-    approach_labels = {1: 'highest log-likelihood run (bold)',
-                       2: 'consensus run = most agreeing (bold)',
-                       3: 'consensus anchored to highest log-likelihood (bold)'}
+    # ── suptitle with approach description ────────────────────────────────────
+    approach_labels = {1: 'Approach 1 — reference: highest log-likelihood run (bold)',
+                       2: 'Approach 2 — reference: consensus run (most agreeing, bold)',
+                       3: 'Approach 3 — reference: highest log-likelihood run, '
+                          'consensus selection (bold)'}
     ref_label = approach_labels.get(getattr(args, 'approach', 2), '')
-    fig.text(0.46, -0.09,
-             f'Clones aligned across runs via Hungarian algorithm  ({ref_label})',
-             ha='center', va='bottom', fontsize=FS_BASE - 1.5,
-             color='#555555', style='italic')
+    if ref_label:
+        fig.text(0.46, 0.97, ref_label,
+                 ha='center', va='top', fontsize=FS_BASE - 0.5,
+                 color='#333333', style='italic')
 
     os.makedirs(os.path.dirname(args.output) or '.', exist_ok=True)
     plt.savefig(args.output, dpi=400, bbox_inches='tight')

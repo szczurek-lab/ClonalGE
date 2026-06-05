@@ -50,10 +50,10 @@ MEAN_TRUE_KEYS = {
     'B_SEE':   'mean_B',
 }
 
-# Method colours (solid fill, hatch distinguishes method)
-METHOD_COLORS  = ['#e15759', '#76b7b2', '#59a14f']   # Tum, CGE-1, CGE-5
-METHOD_HATCHES = ['////',    '',        '....']
-METHOD_LABELS  = ['Tumoroscope', 'ClonalGE (1 chain)', 'ClonalGE (5 chains)']
+# Method colours — ColorBrewer Pastel1 (no hatch)
+METHOD_COLORS  = ['#fbb4ae', '#fed9a6', '#b3cde3', '#ccebc5']   # Tum+LR, Tum+NB, CGE-1, CGE-5
+METHOD_HATCHES = ['',        '',        '',        ''      ]
+METHOD_LABELS  = ['Tumoroscope+LR', 'Tumoroscope+NB', 'ClonalGE (1 chain)', 'ClonalGE (5 chains)']
 
 FS_TITLE = 9
 FS_LABEL = 8
@@ -75,8 +75,9 @@ def parse_results_file(path):
         # ClonalGE writes "Standard Error of the Estimate B:"
         # Tumoroscope+LR writes "Standard Error of the Estimate B (Tumoroscope+LR):"
         # Match ClonalGE first (no parentheses); fall through to LR variant below.
-        'B_SEE':   r'Standard Error of the Estimate B(?! \():\n([\d.eE+\-nan]+)',
+        'B_SEE':    r'Standard Error of the Estimate B(?! \():\n([\d.eE+\-nan]+)',
         'B_SEE_LR': r'Standard Error of the Estimate B \(Tumoroscope\+LR\):\n([\d.eE+\-nan]+)',
+        'B_SEE_NB': r'Standard Error of the Estimate B \(Tumoroscope\+NB\):\n([\d.eE+\-nan]+)',
         'mean_H':   r'Mean of true H:\n([\d.eE+\-nan]+)',
         'mean_phi': r'Mean of true phi:\n([\d.eE+\-nan]+)',
         'mean_n':   r'Mean of true n:\n([\d.eE+\-nan]+)',
@@ -93,7 +94,7 @@ def parse_results_file(path):
         else:
             out[key] = float('nan')
 
-    # If ClonalGE B_SEE is missing but Tumoroscope+LR variant is present, use it
+    # If ClonalGE B_SEE is missing, fall back to LR variant (Tumoroscope results)
     if np.isnan(out.get('B_SEE', float('nan'))):
         out['B_SEE'] = out.get('B_SEE_LR', float('nan'))
 
@@ -114,7 +115,7 @@ def find_results_file(results_dir, run, cond):
 def load_all(results_dir, num_runs):
     """Return data[cond][metric] = list of raw values (one per run)."""
     all_keys = list({
-        'H_SEE', 'phi_SEE', 'n_SEE', 'B_SEE', 'B_SEE_LR', 'pi_SEE',
+        'H_SEE', 'phi_SEE', 'n_SEE', 'B_SEE', 'B_SEE_LR', 'B_SEE_NB', 'pi_SEE',
         'mean_H', 'mean_phi', 'mean_n', 'mean_B'
     })
     data = {c: {k: [] for k in all_keys} for c in CONDITIONS}
@@ -209,7 +210,7 @@ def _draw_box(ax, vals, pos, color, hatch=''):
     )
 
 
-def make_figure(rmae_tum, rmae_1chain, rmae_5chains, outpath):
+def make_figure(rmae_tum, rmae_1chain, rmae_5chains, outpath, rmae_tum_nb=None):
     """
     rmae_tum     : rMAE dict for Tumoroscope (B column will be skipped)
     rmae_1chain  : rMAE dict for ClonalGE 1-chain
@@ -224,33 +225,51 @@ def make_figure(rmae_tum, rmae_1chain, rmae_5chains, outpath):
     })
 
     n_metrics = len(METRICS)
-    fig, axes = plt.subplots(1, n_metrics, figsize=(3.0 * n_metrics, 3.8))
+    fig, axes = plt.subplots(1, n_metrics, figsize=(1.85 * n_metrics, 2.0))
 
     n_cond  = len(CONDITIONS)
-    group_w = 1.6        # spacing between condition groups
+    group_w = 2.0
     offsets = np.arange(n_cond) * group_w
 
-    # Three methods: Tumoroscope, ClonalGE-1, ClonalGE-5
-    # Offsets within a group: -0.26, 0, +0.26
-    dx = [-0.26, 0.0, 0.26]
+    has_nb = rmae_tum_nb is not None
+
+    if has_nb:
+        # Four methods: Tum+LR, Tum+NB, CGE-1, CGE-5
+        dx = [-0.36, -0.12, 0.12, 0.36]
+        methods_H = [
+            (rmae_tum,    METHOD_COLORS[0], METHOD_HATCHES[0]),
+            (rmae_tum_nb, METHOD_COLORS[1], METHOD_HATCHES[1]),
+            (rmae_1chain, METHOD_COLORS[2], METHOD_HATCHES[2]),
+            (rmae_5chains,METHOD_COLORS[3], METHOD_HATCHES[3]),
+        ]
+        # For H/phi/n: Tum+LR and Tum+NB show the same Tumoroscope values
+        methods_nonB = [
+            (rmae_tum,    METHOD_COLORS[0], METHOD_HATCHES[0]),
+            (rmae_1chain, METHOD_COLORS[2], METHOD_HATCHES[2]),
+            (rmae_5chains,METHOD_COLORS[3], METHOD_HATCHES[3]),
+        ]
+        dx_nonB = [-0.26, 0.0, 0.26]
+    else:
+        dx = [-0.26, 0.0, 0.26]
+        methods_H = [
+            (rmae_tum,    METHOD_COLORS[0], METHOD_HATCHES[0]),
+            (rmae_1chain, METHOD_COLORS[2], METHOD_HATCHES[2]),
+            (rmae_5chains,METHOD_COLORS[3], METHOD_HATCHES[3]),
+        ]
+        methods_nonB = methods_H
+        dx_nonB = dx
 
     for col, (metric, ylabel) in enumerate(zip(METRICS, METRIC_LABELS)):
         ax = axes[col]
         is_B = (metric == 'B_SEE')
 
-        methods = [
-            (rmae_tum,     METHOD_COLORS[0], METHOD_HATCHES[0]),
-            (rmae_1chain,  METHOD_COLORS[1], METHOD_HATCHES[1]),
-            (rmae_5chains, METHOD_COLORS[2], METHOD_HATCHES[2]),
-        ]
+        cur_methods = methods_H if is_B else methods_nonB
+        cur_dx      = dx       if is_B else dx_nonB
 
-        for ci, (cond, clabel) in enumerate(zip(CONDITIONS, COND_LABELS)):
-            for mi, (rmae_dict, color, hatch) in enumerate(methods):
-                if is_B and mi == 0:
-                    # Tumoroscope has no B — skip
-                    continue
-                vals = rmae_dict[cond][metric]
-                _draw_box(ax, vals, offsets[ci] + dx[mi], color, hatch)
+        for ci in range(n_cond):
+            for mi, (rmae_dict, color, hatch) in enumerate(cur_methods):
+                vals = rmae_dict[CONDITIONS[ci]][metric]
+                _draw_box(ax, vals, offsets[ci] + cur_dx[mi], color, hatch)
 
         ax.set_xticks(offsets)
         ax.set_xticklabels(COND_LABELS, rotation=30, ha='right',
@@ -265,15 +284,19 @@ def make_figure(rmae_tum, rmae_1chain, rmae_5chains, outpath):
             sp.set_linewidth(0.5)
         ax.set_xlim(offsets[0] - 0.7, offsets[-1] + 0.7)
 
-    # Legend
+    # Legend — show all 4 methods (or 3 if NB not provided)
+    legend_labels  = METHOD_LABELS  if has_nb else [METHOD_LABELS[0]] + METHOD_LABELS[2:]
+    legend_colors  = METHOD_COLORS  if has_nb else [METHOD_COLORS[0]] + METHOD_COLORS[2:]
+    legend_hatches = METHOD_HATCHES if has_nb else [METHOD_HATCHES[0]] + METHOD_HATCHES[2:]
     legend_handles = [
         mpatches.Patch(facecolor=c, alpha=0.7, edgecolor='grey',
                        linewidth=0.5, hatch=h, label=l)
-        for c, h, l in zip(METHOD_COLORS, METHOD_HATCHES, METHOD_LABELS)
+        for c, h, l in zip(legend_colors, legend_hatches, legend_labels)
     ]
+    n_legend = len(legend_labels)
     fig.legend(handles=legend_handles,
                loc='upper center', bbox_to_anchor=(0.5, 1.06),
-               ncol=3, fontsize=FS_LABEL, frameon=False)
+               ncol=n_legend, fontsize=FS_LABEL, frameon=False)
 
     plt.tight_layout(rect=[0, 0, 1, 0.95])
     os.makedirs(os.path.dirname(outpath) or '.', exist_ok=True)
@@ -343,11 +366,23 @@ def main():
     rmae_1   = compute_rmae(data_1,   data_5)
     rmae_tum = compute_rmae(data_tum, data_5)
 
-    print_summary(rmae_tum, 'Tumoroscope')
-    print_summary(rmae_1,   'ClonalGE 1-chain')
-    print_summary(rmae_5,   'ClonalGE 5-chains')
+    # Build Tumoroscope+NB rMAE: same as rmae_tum but B_SEE uses B_SEE_NB
+    data_tum_nb = {c: dict(data_tum[c]) for c in CONDITIONS}
+    for c in CONDITIONS:
+        data_tum_nb[c]['B_SEE'] = data_tum[c]['B_SEE_NB']
+    rmae_tum_nb = compute_rmae(data_tum_nb, data_5)
 
-    make_figure(rmae_tum, rmae_1, rmae_5, args.output)
+    has_nb = any(not np.isnan(v)
+                 for c in CONDITIONS
+                 for v in data_tum[c]['B_SEE_NB'])
+
+    print_summary(rmae_tum,    'Tumoroscope+LR')
+    print_summary(rmae_tum_nb, 'Tumoroscope+NB')
+    print_summary(rmae_1,      'ClonalGE 1-chain')
+    print_summary(rmae_5,      'ClonalGE 5-chains')
+
+    make_figure(rmae_tum, rmae_1, rmae_5, args.output,
+                rmae_tum_nb=rmae_tum_nb if has_nb else None)
 
 
 if __name__ == '__main__':

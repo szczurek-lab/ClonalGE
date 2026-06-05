@@ -260,7 +260,7 @@ def _add_legend(fig, threshold, anchor):
 
 # ── single-run figure ─────────────────────────────────────────────────────────
 
-def plot_single_run(chains, run_label, threshold, output):
+def plot_single_run(chains, run_label, threshold, output, approach_label=None):
     n = len(chains)
     selected, best_idx, logliks = select_within_run(chains, threshold)
     print(f'  Best chain: {best_idx + 1}  loglik={logliks[best_idx]:.1f}')
@@ -273,9 +273,9 @@ def plot_single_run(chains, run_label, threshold, output):
 
     _make_rcparams()
     fig, axes = plt.subplots(
-        1, 2, figsize=(FIG_W, FIG_H),
+        1, 2, figsize=(FIG_W, FIG_H + 0.25),
         gridspec_kw=dict(wspace=0.38, left=0.08, right=0.88,
-                         top=0.88, bottom=0.18),
+                         top=0.82, bottom=0.18),
     )
     im = draw_heatmap(axes[0], R_H_ord, order, new_best, new_sel, n_sel, n,
                       title='Clonal composition  (H)',
@@ -285,8 +285,14 @@ def plot_single_run(chains, run_label, threshold, output):
                  threshold=threshold, show_ylabel=False)
     _add_shared_colorbar(fig, im, [0.905, 0.18, 0.018, 0.70], threshold)
     _add_legend(fig, threshold, (0.46, -0.02))
-    fig.text(0.895, 0.93, run_label, fontsize=FS_BASE - 1.5,
+
+    # run label (top right, italic grey) — sits just below the suptitle
+    fig.text(0.895, 0.91, run_label, fontsize=FS_BASE - 1.5,
              color='#888888', ha='right', va='top', style='italic')
+    # approach-specific reference run label — suptitle above everything
+    if approach_label is not None:
+        fig.suptitle(approach_label, fontsize=FS_BASE - 0.5,
+                     color='#333333', style='italic', y=1.01)
 
     os.makedirs(os.path.dirname(output) or '.', exist_ok=True)
     plt.savefig(output, dpi=400, bbox_inches='tight')
@@ -298,130 +304,122 @@ def plot_single_run(chains, run_label, threshold, output):
 
 def plot_all_runs(runs, threshold, output):
     """
-    One column per run, two rows: top = H, bottom = B.
-    Each cell is a compact 10×10 heatmap with small annotations.
+    Layout: H and B side-by-side per run, RUNS_PER_ROW runs per row.
+    With 20 runs and RUNS_PER_ROW=4 this gives 5 rows — each panel is
+    tall enough for legible annotations.
     """
-    n_runs  = len(runs)
-    ncols   = 5
-    nrows_g = int(np.ceil(n_runs / ncols))   # groups of runs (2 for 10 runs)
-    # layout: for each group-row we have 2 heatmap rows (H then B)
-    total_rows = nrows_g * 2
+    RUNS_PER_ROW = 2          # runs per row; 2 panels (H,B) each → 4 cols
+    PAIR_GAP     = 0.10       # gap (inches) between H and B within a run
+    RUN_GAP      = 0.28       # gap (inches) between adjacent run-pairs
 
-    FS_A2 = 3.5    # annotation font (smaller for dense grid)
-    FS_T2 = 5.0    # tick labels
-    FS_TT = 5.5    # panel title
+    FS_A2 = 4.2    # annotation font
+    FS_T2 = 6.5    # tick labels
+    FS_TT = 7.0    # panel title
 
-    cell_w = 1.55   # inches per heatmap cell
-    cell_h = 1.55
-    gap_h  = 0.55   # vertical gap between H-row and B-row groups
+    panel_w = 1.85  # inches per individual heatmap
+    panel_h = 1.80  # inches per individual heatmap
 
-    fig_w = ncols * cell_w + 0.6          # + colorbar margin
-    fig_h = total_rows * cell_h + (nrows_g - 1) * gap_h + 0.35  # + title
+    n_runs   = len(runs)
+    n_rows   = int(np.ceil(n_runs / RUNS_PER_ROW))
+    n_cols   = RUNS_PER_ROW * 2   # H + B per run
+
+    # total figure dimensions
+    fig_w = (RUNS_PER_ROW * (2 * panel_w + PAIR_GAP)
+             + (RUNS_PER_ROW - 1) * RUN_GAP
+             + 0.65)                             # + colorbar
+    fig_h = n_rows * panel_h + 0.45             # + legend
 
     _make_rcparams()
-
-    # build axes manually so we can add a gap between H-group and B-group
     fig = plt.figure(figsize=(fig_w, fig_h))
 
-    ax_grid = {}   # (group_row, var_row, col) → ax
-    last_im  = None
-
-    for g in range(nrows_g):       # g = 0 or 1  (first/second set of 5 runs)
-        for vr in range(2):        # vr = 0 (H) or 1 (B)
-            for col in range(ncols):
-                run_pos = g * ncols + col
-                if run_pos >= n_runs:
-                    continue
-
-                # compute position in figure coordinates
-                x0 = col * cell_w / fig_w
-                row_in_fig = g * (2 * cell_h + gap_h) + vr * cell_h
-                y0 = 1.0 - (row_in_fig + cell_h) / fig_h + 0.02
-                w  = (cell_w - 0.28) / fig_w
-                h  = (cell_h - 0.30) / fig_h
-
-                ax = fig.add_axes([x0 + 0.05 / fig_w, y0, w, h])
-                ax_grid[(g, vr, col)] = ax
+    # pre-compute left edges for each panel column
+    xs = []   # xs[run_in_row][var] = left edge (figure fraction)
+    for r in range(RUNS_PER_ROW):
+        left = (r * (2 * panel_w + PAIR_GAP + RUN_GAP)) / fig_w
+        xs.append([left,
+                   (left * fig_w + panel_w + PAIR_GAP) / fig_w])
 
     im_ref = None
-    for g in range(nrows_g):
-        for col in range(ncols):
-            run_pos = g * ncols + col
-            if run_pos >= n_runs:
-                continue
-            seed, chains = runs[run_pos]
-            n_chains = len(chains)
-            selected, best_idx, logliks = select_within_run(chains, threshold)
-            n_sel = len(selected)
 
-            R_H = pairwise_r([c.inferred_H for c in chains])
-            R_B = pairwise_r([c.inferred_B for c in chains])
-            R_H_ord, order, new_best, new_sel, ns = reorder(
-                R_H, selected, best_idx, n_chains)
-            R_B_ord, *_ = reorder(R_B, selected, best_idx, n_chains)
+    for run_idx, (seed, chains) in enumerate(runs):
+        row     = run_idx // RUNS_PER_ROW
+        col_run = run_idx %  RUNS_PER_ROW
 
-            for vr, (R_ord, var_label) in enumerate(
-                    [(R_H_ord, 'H'), (R_B_ord, 'B')]):
-                ax = ax_grid[(g, vr, col)]
-                n = R_ord.shape[0]
-                im = ax.imshow(R_ord, cmap=CMAP, vmin=VMIN, vmax=VMAX,
-                               aspect='equal', interpolation='none')
-                if im_ref is None:
-                    im_ref = im
+        n_chains = len(chains)
+        selected, best_idx, logliks = select_within_run(chains, threshold)
+        n_sel = len(selected)
 
-                # annotations
-                for i in range(n):
-                    for j in range(n):
-                        if i == j:
-                            continue
-                        val = R_ord[i, j]
-                        tc  = 'white' if val > 0.62 else '#333333'
-                        ax.text(j, i, f'{val:.2f}', ha='center', va='center',
-                                fontsize=FS_A2, color=tc, zorder=3)
-                for i in range(n):
-                    ax.add_patch(plt.Rectangle(
-                        (i - 0.5, i - 0.5), 1, 1,
-                        facecolor=COL_DIAG, edgecolor='none', zorder=2))
-                    ax.text(i, i, '—', ha='center', va='center',
-                            fontsize=FS_A2, color='#888888', zorder=3)
+        R_H = pairwise_r([c.inferred_H for c in chains])
+        R_B = pairwise_r([c.inferred_B for c in chains])
+        R_H_ord, order, new_best, new_sel, ns = reorder(
+            R_H, selected, best_idx, n_chains)
+        R_B_ord, *_ = reorder(R_B, selected, best_idx, n_chains)
 
-                # dividing line
-                if 0 < ns < n:
-                    cut = ns - 0.5
-                    ax.axhline(cut, color=COL_DIV, lw=0.5,
-                               linestyle='--', zorder=4)
-                    ax.axvline(cut, color=COL_DIV, lw=0.5,
-                               linestyle='--', zorder=4)
+        for vi, (R_ord, var_label) in enumerate(
+                [(R_H_ord, 'H'), (R_B_ord, 'B')]):
 
-                # tick labels
-                ordered_labels = [str(order[i] + 1) for i in range(n)]
-                ax.set_xticks(range(n))
-                ax.set_yticks(range(n))
-                xlbls = ax.set_xticklabels(ordered_labels, fontsize=FS_T2)
-                ylbls = ax.set_yticklabels(ordered_labels, fontsize=FS_T2)
-                for pos, (xl, yl) in enumerate(zip(xlbls, ylbls)):
-                    c   = COL_SEL if pos in new_sel else COL_EXC
-                    fw  = 'bold' if pos == new_best else 'normal'
-                    for lbl in (xl, yl):
-                        lbl.set_color(c)
-                        lbl.set_fontweight(fw)
+            x0 = xs[col_run][vi]
+            y0 = 1.0 - (row * panel_h + panel_h) / fig_h + 0.03
+            w  = (panel_w - 0.26) / fig_w
+            h  = (panel_h - 0.32) / fig_h
+            ax = fig.add_axes([x0, y0, w, h])
 
-                ax.tick_params(length=0)
-                for sp in ax.spines.values():
-                    sp.set_visible(False)
+            n  = R_ord.shape[0]
+            im = ax.imshow(R_ord, cmap=CMAP, vmin=VMIN, vmax=VMAX,
+                           aspect='equal', interpolation='none')
+            if im_ref is None:
+                im_ref = im
 
-                # panel title: run number + variable + kept chains
-                ax.set_title(
-                    f'Run {seed} — {var_label}  '
-                    f'({n_sel}/{n_chains} chains)',
-                    fontsize=FS_TT, pad=2)
+            # cell annotations
+            for i in range(n):
+                for j in range(n):
+                    if i == j:
+                        continue
+                    val = R_ord[i, j]
+                    tc  = 'white' if val > 0.62 else '#333333'
+                    ax.text(j, i, f'{val:.2f}', ha='center', va='center',
+                            fontsize=FS_A2, color=tc, zorder=3)
+            for i in range(n):
+                ax.add_patch(plt.Rectangle(
+                    (i - 0.5, i - 0.5), 1, 1,
+                    facecolor=COL_DIAG, edgecolor='none', zorder=2))
+                ax.text(i, i, '—', ha='center', va='center',
+                        fontsize=FS_A2, color='#888888', zorder=3)
 
-                if col == 0:
-                    ax.set_ylabel('Chain', fontsize=FS_T2, labelpad=2)
-                ax.set_xlabel('Chain', fontsize=FS_T2, labelpad=1)
+            # selection divider
+            if 0 < ns < n:
+                cut = ns - 0.5
+                ax.axhline(cut, color=COL_DIV, lw=0.5, linestyle='--', zorder=4)
+                ax.axvline(cut, color=COL_DIV, lw=0.5, linestyle='--', zorder=4)
+
+            # tick labels
+            ordered_labels = [str(order[i] + 1) for i in range(n)]
+            ax.set_xticks(range(n))
+            ax.set_yticks(range(n))
+            xlbls = ax.set_xticklabels(ordered_labels, fontsize=FS_T2)
+            ylbls = ax.set_yticklabels(ordered_labels, fontsize=FS_T2)
+            for pos, (xl, yl) in enumerate(zip(xlbls, ylbls)):
+                c  = COL_SEL if pos in new_sel else COL_EXC
+                fw = 'bold' if pos == new_best else 'normal'
+                for lbl in (xl, yl):
+                    lbl.set_color(c)
+                    lbl.set_fontweight(fw)
+
+            ax.tick_params(length=0)
+            for sp in ax.spines.values():
+                sp.set_visible(False)
+
+            ax.set_title(
+                f'Run {seed} — {var_label}  ({n_sel}/{n_chains})',
+                fontsize=FS_TT, pad=2)
+
+            if vi == 0:
+                ax.set_ylabel('Chain', fontsize=FS_T2, labelpad=2)
+            ax.set_xlabel('Chain', fontsize=FS_T2, labelpad=1)
 
     # shared colorbar
-    cbar_ax = fig.add_axes([0.935, 0.08, 0.018, 0.84])
+    cbar_x = 1.0 - 0.50 / fig_w
+    cbar_ax = fig.add_axes([cbar_x, 0.06, 0.018, 0.88])
     cb = fig.colorbar(im_ref, cax=cbar_ax)
     cb.set_label('Pearson  r', fontsize=FS_BASE, labelpad=4)
     cb.ax.tick_params(labelsize=FS_TICK - 0.5, length=2, width=0.5)
@@ -438,14 +436,14 @@ def plot_all_runs(runs, threshold, output):
                        linestyle='--', linewidth=0.7,
                        label='Selection boundary'),
     ]
-    fig.legend(handles=legend_els, fontsize=FS_BASE - 1.5,
+    fig.legend(handles=legend_els, fontsize=FS_BASE - 1,
                loc='lower center', ncol=3,
-               bbox_to_anchor=(0.46, -0.01),
+               bbox_to_anchor=(0.46, -0.005),
                frameon=False, handlelength=1.0,
                handletextpad=0.4, columnspacing=1.0)
 
     os.makedirs(os.path.dirname(output) or '.', exist_ok=True)
-    plt.savefig(output, dpi=400, bbox_inches='tight')
+    plt.savefig(output, dpi=300, bbox_inches='tight')
     print(f'Saved → {output}')
     plt.close()
 
@@ -461,6 +459,12 @@ def main():
     ap.add_argument('--threshold',     type=float, default=0.9)
     ap.add_argument('--output',        default='plots_paper/chain_agreement.png')
     ap.add_argument('--output_supp',   default='plots_paper/chain_agreement_supp.png')
+    ap.add_argument('--ref_run',       type=int, default=None,
+                    help='Force this run as the single-run reference (default: '
+                         'run with highest best-chain loglik)')
+    ap.add_argument('--approach',      type=int, default=None, choices=[1, 2, 3],
+                    help='Approach number — adds "approach-specific reference run" '
+                         'annotation to the single-run figure')
     ap.add_argument('--synthetic',     action='store_true')
     args = ap.parse_args()
 
@@ -484,13 +488,24 @@ def main():
     if not runs:
         raise RuntimeError('No runs found.')
 
-    # single-run figure: the run with highest best-chain loglik
-    best_seed, best_chains = max(
-        runs,
-        key=lambda sc: max(c.last_loglik for c in sc[1]))
-    print(f'\n=== Single-run figure (run {best_seed}) ===')
-    plot_single_run(best_chains, f'run {best_seed}',
-                    args.threshold, args.output)
+    # single-run figure: use --ref_run if given, else highest best-chain loglik
+    if args.ref_run is not None:
+        matched = [(s, c) for s, c in runs if s == args.ref_run]
+        if not matched:
+            raise RuntimeError(f'--ref_run {args.ref_run} not found in loaded runs.')
+        ref_seed, ref_chains = matched[0]
+    else:
+        ref_seed, ref_chains = max(
+            runs, key=lambda sc: max(c.last_loglik for c in sc[1]))
+
+    approach_label = None
+    if args.approach is not None:
+        approach_label = f'Approach {args.approach} — approach-specific reference run'
+
+    print(f'\n=== Single-run figure (run {ref_seed}) ===')
+    plot_single_run(ref_chains, f'run {ref_seed}',
+                    args.threshold, args.output,
+                    approach_label=approach_label)
 
     print('\n=== All-runs supplementary figure ===')
     plot_all_runs(runs, args.threshold, args.output_supp)

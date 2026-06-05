@@ -2,12 +2,16 @@
 Figure 3 — Genes are expressed differently in various cancer clones.
 
 Panel a: Normalised expression (min-max scaled across clones) of the top 30
-         genes ranked by variance of B_kg across clones.  Rows and columns
-         are clustered hierarchically.
+         genes ranked by DE evidence (number of clone pairs in which the gene
+         is called DE by HDI+ROPE, ties broken by mean absolute effect size).
+         Rows and columns are clustered hierarchically.
 
-Panel b: Posterior probability of differential gene expression between every
-         pair of clones, P(B_k1,g > B_k2,g | Data), computed from pooled
-         MCMC samples across consensus-selected chains and runs.
+Panel b: Posterior mean effect size (B_k1 - B_k2) for each clone pair and
+         gene, using the HDI + ROPE test for differential expression.
+         A gene is called DE when its 95% HDI of (B_k1 - B_k2) lies entirely
+         outside the Region of Practical Equivalence [-rope_delta, +rope_delta].
+         Non-DE cells are shown in grey; DE cells use a diverging colormap
+         (red = higher in k1, blue = higher in k2).
 
 Usage:
     python plot_figure3.py [options]
@@ -19,6 +23,7 @@ Options:
     --section         Section name         (default: all)
     --threshold       Pearson r threshold  (default: 0.9)
     --top_genes       Genes to show        (default: 30)
+    --rope_delta      ROPE half-width; 0 = auto (0.1 x global SD of B)
     --output          Output path          (default: plots_paper/figure3.png)
 """
 
@@ -41,7 +46,7 @@ from scipy.optimize import linear_sum_assignment
 CHAIN_COUNT = 10
 
 CMAP_A   = 'magma'         # black → purple → orange → yellow
-CMAP_B   = 'Blues'         # white → dark blue
+CMAP_B   = 'RdBu_r'       # blue (k2 higher) → white → red (k1 higher)
 
 FS_TITLE  = 7
 FS_LABEL  = 7
@@ -176,19 +181,94 @@ def cluster_order(mat):
     return leaves_list(row_link), leaves_list(col_link)
 
 
-def posterior_diff_prob(B_samples, gene_idx, K):
+def hdi(samples, credible_mass=0.95):
     """
-    Compute P(B_k1,g > B_k2,g | Data) for all clone pairs and selected genes.
+    Vectorised HDI over genes.
+    samples: (N, n_genes)   →   low, high: each (n_genes,)
+    Finds the shortest interval containing credible_mass of the sorted samples.
+    """
+    sorted_s  = np.sort(samples, axis=0)          # (N, n_genes)
+    N         = sorted_s.shape[0]
+    n_in      = int(np.floor(credible_mass * N))
+    n_in      = max(1, min(n_in, N - 1))
+    starts    = sorted_s[:N - n_in, :]             # (N-n_in, n_genes)
+    ends      = sorted_s[n_in:,     :]             # (N-n_in, n_genes)
+    min_idx   = np.argmin(ends - starts, axis=0)   # (n_genes,)
+    g_idx     = np.arange(samples.shape[1])
+    return starts[min_idx, g_idx], ends[min_idx, g_idx]
 
-    Returns dict {(k1,k2): array of shape (n_genes,)} for k1 < k2.
+
+def rope_de(B_samples, gene_idx, K, rope_delta, credible_mass=0.95):
     """
-    B_sub = B_samples[:, :, :][:, :, gene_idx]   # (N, K, n_genes)
-    pairs = {}
+    HDI + ROPE differential expression test for all clone pairs and genes.
+
+    For each pair (k1, k2) and gene g:
+      delta = B_{k1,g} - B_{k2,g}  (posterior samples)
+      HDI   = credible_mass HDI of delta
+      DE    = HDI lies entirely outside [-rope_delta, +rope_delta]
+
+    Returns dict {(k1,k2): {'effect_mean', 'hdi_low', 'hdi_high', 'is_de'}}
+    each value is an array of shape (n_genes,).
+    """
+    B_sub   = B_samples[:, :, gene_idx]   # (N, K, n_genes)
+    results = {}
     for k1 in range(K):
         for k2 in range(k1 + 1, K):
-            prob = np.mean(B_sub[:, k1, :] > B_sub[:, k2, :], axis=0)
-            pairs[(k1, k2)] = prob
-    return pairs
+            delta       = B_sub[:, k1, :] - B_sub[:, k2, :]   # (N, n_genes)
+            low, high   = hdi(delta, credible_mass)
+            effect_mean = np.mean(delta, axis=0)
+            is_de       = (low > rope_delta) | (high < -rope_delta)
+            results[(k1, k2)] = {
+                'effect_mean': effect_mean,
+                'hdi_low':     low,
+                'hdi_high':    high,
+                'is_de':       is_de,
+            }
+    return results
+
+
+def top_genes_by_de(B_samples, gene_names, K, rope_delta,
+                    credible_mass=0.95, n=30):
+    """
+    Select top-n genes by HDI+ROPE DE evidence across all clone pairs.
+
+    Primary rank:   number of pairs in which the gene is called DE (descending).
+    Secondary rank: mean absolute effect size across all pairs (descending).
+
+    Runs rope_de on ALL genes, then subsets to the top-n.
+    Returns:
+        gene_idx   : (n,) integer indices into the full gene list
+        top_names  : (n,) gene name strings
+        de_results : dict {(k1,k2): {...}} with arrays already subsetted to n genes
+    """
+    G       = B_samples.shape[2]
+    all_idx = np.arange(G)
+    all_pairs_de = rope_de(B_samples, all_idx, K, rope_delta, credible_mass)
+
+    n_de_pairs      = np.zeros(G, dtype=int)
+    mean_abs_effect = np.zeros(G)
+    n_pairs         = len(all_pairs_de)
+    for r in all_pairs_de.values():
+        n_de_pairs      += r['is_de'].astype(int)
+        mean_abs_effect += np.abs(r['effect_mean'])
+    if n_pairs > 0:
+        mean_abs_effect /= n_pairs
+
+    # lexsort: last key = primary; both descending → negate
+    order    = np.lexsort((-mean_abs_effect, -n_de_pairs))
+    gene_idx = order[:n]
+    top_names = [gene_names[i] for i in gene_idx]
+
+    n_any_de = int((n_de_pairs > 0).sum())
+    print(f'Genes DE in ≥1 pair: {n_any_de}/{G}  '
+          f'(top gene: {top_names[0]}, {n_de_pairs[gene_idx[0]]} pairs)')
+
+    # subset de_results to selected genes
+    de_results = {
+        k1k2: {k: v[gene_idx] for k, v in r.items()}
+        for k1k2, r in all_pairs_de.items()
+    }
+    return gene_idx, top_names, de_results
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -202,7 +282,9 @@ def main():
     ap.add_argument('--start_seed',    type=int, default=1)
     ap.add_argument('--section',       default='all')
     ap.add_argument('--threshold',     type=float, default=0.9)
-    ap.add_argument('--top_genes',     type=int, default=30)
+    ap.add_argument('--top_genes',     type=int,   default=30)
+    ap.add_argument('--rope_delta',    type=float, default=0.0,
+                    help='ROPE half-width; 0 = auto (0.1 x global SD of B)')
     ap.add_argument('--approach',      type=int, default=2, choices=[1, 2, 3],
                     help='1=highest loglik  2=consensus  3=consensus anchored to HL')
     ap.add_argument('--outdir',        default='plots_paper',
@@ -220,8 +302,23 @@ def main():
     gene_names = load_genes(args.result_prefix, args.start_seed)
     print(f'B shape: {B_final.shape}  MCMC samples: {B_samples.shape[0]}  genes: {len(gene_names)}')
 
-    # ── select top genes ──────────────────────────────────────────────────────
-    gene_idx, top_names = top_genes_by_variance(B_final, gene_names, args.top_genes)
+    # ── ROPE delta (needed before gene selection) ─────────────────────────────
+    if args.rope_delta > 0:
+        rope_delta = args.rope_delta
+    else:
+        # 10th percentile of absolute pairwise differences in posterior mean B:
+        # "a difference is meaningful if it is larger than 90% of observed
+        # clone-pair differences" — adaptive to the data scale.
+        pair_diffs = np.concatenate([
+            np.abs(B_final[k1] - B_final[k2])
+            for k1 in range(K) for k2 in range(k1 + 1, K)
+        ])
+        rope_delta = float(np.percentile(pair_diffs, 10))
+    print(f'ROPE delta: {rope_delta:.4f}')
+
+    # ── select top genes by DE evidence (runs rope_de on all genes) ───────────
+    gene_idx, top_names, de_results = top_genes_by_de(
+        B_samples, gene_names, K, rope_delta, n=args.top_genes)
 
     # panel a: clones 2,3,4 only (drop Clone 1 = index 0)
     clone_keep   = [k for k in range(K) if k != 0]
@@ -236,7 +333,6 @@ def main():
     # ── panel a: min-max scaled B, cluster genes (cols) ───────────────────────
     B_sub    = B_final[clone_keep, :][:, gene_idx]   # (n_clones, n_genes)
     B_scaled = minmax_scale_genes(B_sub)              # (n_genes, n_clones)
-    # cluster only genes (rows of B_scaled = cols of heatmap)
     gene_link = linkage(B_scaled, method='average', metric='euclidean')
     gene_ord  = leaves_list(gene_link)
     gene_names_ord = [top_names[g] for g in gene_ord]
@@ -244,12 +340,17 @@ def main():
     # heatmap: rows=clones, cols=genes  → B_scaled.T reordered
     B_plot = B_scaled[gene_ord, :].T     # (n_clones, n_genes)
 
-    # ── panel b: differential expression probabilities ────────────────────────
-    diff_probs = posterior_diff_prob(B_samples, gene_idx, K)
-    # matrix: rows=pairs, cols=genes (same gene order as panel a)
-    prob_mat = np.zeros((n_pairs, args.top_genes))
+    # ── panel b: HDI + ROPE effect sizes (de_results already computed above) ──
+    # rows=pairs, cols=genes (same gene order as panel a)
+    effect_mat = np.zeros((n_pairs, args.top_genes))
+    de_mat     = np.zeros((n_pairs, args.top_genes), dtype=bool)
     for j, (k1, k2) in enumerate(pair_keep):
-        prob_mat[j, :] = diff_probs[(k1, k2)][gene_ord]
+        r = de_results[(k1, k2)]
+        effect_mat[j, :] = r['effect_mean'][gene_ord]
+        de_mat[j, :]     = r['is_de'][gene_ord]
+    # NaN for non-DE cells so the colormap's bad-color (grey) shows through
+    effect_display = effect_mat.copy()
+    effect_display[~de_mat] = np.nan
 
     # ── figure layout ─────────────────────────────────────────────────────────
     plt.rcParams.update({
@@ -332,8 +433,11 @@ def main():
                     fontsize=FS_TICK - 0.5, rotation=90)
 
     # — panel b heatmap ────────────────────────────────────────────────────────
-    im_b = ax_b.imshow(prob_mat, aspect='auto', cmap=CMAP_B,
-                       vmin=0, vmax=1, interpolation='nearest')
+    vmax_b = float(np.nanmax(np.abs(effect_display))) if de_mat.any() else 1.0
+    cmap_b = plt.get_cmap(CMAP_B).copy()
+    cmap_b.set_bad(color='#cccccc')   # non-DE cells shown in grey
+    im_b = ax_b.imshow(effect_display, aspect='auto', cmap=cmap_b,
+                       vmin=-vmax_b, vmax=vmax_b, interpolation='nearest')
     ax_b.set_xticks([])
     ax_b.set_yticks(range(n_pairs))
     ax_b.set_yticklabels(pair_labels, fontsize=FS_TICK)
@@ -343,7 +447,7 @@ def main():
     for sp in ax_b.spines.values():
         sp.set_linewidth(0.4)
     cb_b = fig.colorbar(im_b, cax=cax_b)
-    cb_b.set_label('P(B$_{k_1}$ > B$_{k_2}$\n| Data)', fontsize=FS_LABEL, labelpad=3)
+    cb_b.set_label('Effect size\n(B$_{k_1}$−B$_{k_2}$)', fontsize=FS_LABEL, labelpad=3)
     cb_b.ax.tick_params(labelsize=FS_TICK - 0.5, length=2)
     cb_b.outline.set_linewidth(0.4)
 
