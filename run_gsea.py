@@ -48,7 +48,7 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
-import run_selection as rs
+from clonalge import run_selection as rs
 
 try:
     import gseapy as gp

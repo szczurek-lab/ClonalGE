@@ -8,8 +8,8 @@
 #   Ctrl+A, D  to detach
 #   screen -r figure2  to reattach
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-cd "$SCRIPT_DIR"
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$REPO_ROOT"
 
 RUNS=20
 CONFIG_DIR="configs/"

@@ -1,4 +1,6 @@
 #!/bin/bash
+
+cd "$(dirname "$0")/.."   # run from repo root
 # Usage: bash run_main_real_1000.sh [N_JOBS]
 # N_JOBS — number of parallel jobs (default: number of CPU cores)
 

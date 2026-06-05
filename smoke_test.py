@@ -15,9 +15,9 @@ os.environ.setdefault("MKL_NUM_THREADS", "1")
 import numpy as np
 import random
 
-import simulation as sim
-import tumoroscope as tum
-from clonalGE import clonalGE
+from clonalge import simulation as sim
+from clonalge import tumoroscope as tum
+from clonalge.model import clonalGE
 
 
 def main():
@@ -27,6 +27,11 @@ def main():
     K, S, g, I = 4, 40, 10, 40
     C = np.random.binomial(1, 0.5, size=(I, K)).astype(float)
     C[:, 0] = 0.0                      # normal clone, no mutations
+    # Ensure every mutation belongs to at least one tumour clone (as in real data
+    # from phyloWGS). All-zero rows cause binom_p == 0 in log_likelihood_model.
+    zero_rows = np.where(C.sum(axis=1) == 0)[0]
+    for i in zero_rows:
+        C[i, np.random.randint(1, K)] = 1.0
     F = np.tile([30, 1], (K, 1))
     F_epsilon = np.tile([2, 1], (K, 1))
     n_lambda = np.tile(45, S)
@@ -45,10 +50,13 @@ def main():
         avarage_clone_in_spot=s.avarage_clone_in_spot, F=F, C=s.C, A=s.A, D=s.D,
         F_epsilon=F_epsilon, optimal_rate=0.4, n_lambda=n_lambda, gamma=0.95,
         pi_2D=True, result_txt='smoke_tum.txt', rp_est_method='my')
-    t.gibbs_sampling(seed=1, min_iter=30, max_iter=60, burn_in=5, batch=20,
+    # Geweke convergence check fires at iter=batch-1.  With every_n_sample=5 and
+    # 6 sub-windows (steps=0.1, i=0..5), the smallest window has N'≈N/2 thinned
+    # samples.  Geweke needs floor(0.1*N')≥1 → N'≥10 → N≥20 → batch≥105.
+    t.gibbs_sampling(seed=1, min_iter=120, max_iter=600, burn_in=5, batch=105,
                      simulated_data=s, n_sampling=True, F_fraction=False,
                      theta_variable=False, pi_2D=True, th=0.8, every_n_sample=5,
-                     changes_batch=20, var_calculation=10)
+                     changes_batch=105, var_calculation=10)
     assert t.inferred_H.shape == (S, K)
 
     cg = clonalGE(
@@ -59,9 +67,9 @@ def main():
         b_beta=s.b_beta,
         inits=(t.inferred_n, t.inferred_H, t.inferred_G, t.inferred_pi,
                t.inferred_phi, t.inferred_Z, np.ones((K, g))))
-    cg.gibbs_sampling(seed=1, min_iter=30, max_iter=60, batch=20,
+    cg.gibbs_sampling(seed=1, min_iter=120, max_iter=600, batch=105,
                       simulated_data=s, n_sampling=True, F_fraction=False,
-                      pi_2D=True, th=0.8, every_n_sample=5, changes_batch=20)
+                      pi_2D=True, th=0.8, every_n_sample=5, changes_batch=105)
 
     assert cg.inferred_B.shape == (K, g)
     assert cg.inferred_H.shape == (S, K)

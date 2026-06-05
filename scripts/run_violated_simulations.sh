@@ -6,9 +6,9 @@ SIM_DIR="/Volumes/LenovoPS8/ClonalGE/test_sim_violated"
 RESULTS_NORMAL="/Volumes/LenovoPS8/ClonalGE/Results_violated_normal"
 RESULTS_ZINB="/Volumes/LenovoPS8/ClonalGE/Results_violated_zinb"
 RESULTS_BATCH="/Volumes/LenovoPS8/ClonalGE/Results_violated_batch"
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
-cd "$SCRIPT_DIR"
+cd "$REPO_ROOT"
 
 # Step 1: generate violated simulations
 echo "=== Generating violated simulations ==="

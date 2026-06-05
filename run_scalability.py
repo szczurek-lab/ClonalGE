@@ -31,9 +31,9 @@ import numpy as np
 import scipy.special as sc
 from scipy.optimize import lsq_linear
 
-import simulation as sim
-import tumoroscope as tum
-from clonalGE import clonalGE
+from clonalge import simulation as sim
+from clonalge import tumoroscope as tum
+from clonalge.model import clonalGE
 
 # ── timing parameters ─────────────────────────────────────────────────────────
 TIMING_ITERS  = 500    # ClonalGE iterations per timing experiment

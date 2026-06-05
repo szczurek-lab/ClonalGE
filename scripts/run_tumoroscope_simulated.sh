@@ -14,7 +14,7 @@ export SIM_DIR="/path/to/test_sim"
 # ─────────────────────────────────────────────────────────────────────────────
 
 NOISE=0
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 CONFIG_DIR="$SCRIPT_DIR/configs_tumoroscope"
 
 echo "Output : $OUTPUT_DIR"

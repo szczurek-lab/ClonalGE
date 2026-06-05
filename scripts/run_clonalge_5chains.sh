@@ -12,7 +12,7 @@ export CLONALGE_CHAINS=5
 export CLONALGE_CORES=5
 
 NOISE=0
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
 echo "Output : $OUTPUT_DIR"
 echo "Python : $PYTHON"
@@ -22,7 +22,7 @@ echo ""
 
 # cd into ClonalGE dir so config paths stay relative (main_diff_config.py
 # uses re.split("/|.json") which breaks on absolute paths)
-cd "$SCRIPT_DIR"
+cd "$REPO_ROOT"
 
 for RUN in $(seq 1 20); do
     echo "========================================"

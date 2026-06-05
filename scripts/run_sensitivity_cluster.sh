@@ -3,6 +3,8 @@
 # Usage: bash run_sensitivity_cluster.sh [max_parallel]
 # Default: run all 45 at once. Pass a number to cap concurrency (e.g. 20).
 
+cd "$(dirname "$0")/.."   # run from repo root
+
 # ── Adjust these paths ────────────────────────────────────────────────────────
 BASE=$(pwd)   # directory containing test_sim/ and sensitivity_results/
 CODE=$(pwd)   # directory containing run_sensitivity_one.py

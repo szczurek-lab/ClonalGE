@@ -30,8 +30,8 @@ import pandas as pd
 from scipy.optimize import lsq_linear
 from multiprocessing import Pool
 
-from clonalGE import clonalGE
-import tumoroscope as tum
+from clonalge.model import clonalGE
+from clonalge import tumoroscope as tum
 
 # ── constants ──────────────────────────────────────────────────────────────────
 FACTORS   = [0.50, 0.75, 1.00, 1.25, 1.50]
