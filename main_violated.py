@@ -17,9 +17,9 @@ import sys, json, pickle, random, time
 import numpy as np
 from multiprocessing import Pool
 from scipy.optimize import lsq_linear
-import constants
-from clonalGE import clonalGE
-import tumoroscope as tum
+from clonalge import constants
+from clonalge.model import clonalGE
+from clonalge import tumoroscope as tum
 
 # ── settings ──────────────────────────────────────────────────────────────────
 constants.CHAINS = int(os.environ.get('CLONALGE_CHAINS', 1))

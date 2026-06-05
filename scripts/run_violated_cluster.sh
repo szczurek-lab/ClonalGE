@@ -3,6 +3,8 @@
 # Usage: bash run_violated_cluster.sh [max_parallel]
 # Default: run all 60 at once. Pass a number to cap concurrency (e.g. 20).
 
+cd "$(dirname "$0")/.."   # run from repo root
+
 # ── Adjust these paths ────────────────────────────────────────────────────────
 BASE=$(pwd)   # directory containing test_sim_violated/ and Results_violated_*/
 CODE=$(pwd)   # directory containing main_violated.py

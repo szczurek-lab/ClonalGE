@@ -29,8 +29,8 @@ import random
 import numpy as np
 import scipy.special as sc
 
-import simulation as sim
-import constants
+from clonalge import simulation as sim
+from clonalge import constants
 
 # ── violation parameters ──────────────────────────────────────────────────────
 ZIP_RATE  = 0.10   # fraction of counts set to structural zeros (ZINB)

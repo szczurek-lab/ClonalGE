@@ -1,4 +1,6 @@
 #!/bin/bash
+
+cd "$(dirname "$0")/.."   # run from repo root
 # Run ClonalGE on real prostate data to regenerate Figure 5 results.
 #
 # Usage:

@@ -1,7 +1,7 @@
-import visualization as vis
-from clonalGE import clonalGE
-import tumoroscope as tum
-import constants
+from clonalge import visualization as vis
+from clonalge.model import clonalGE
+from clonalge import tumoroscope as tum
+from clonalge import constants
 import pickle
 import numpy as np
 import random
@@ -12,7 +12,7 @@ import sys
 import distutils.util
 from multiprocessing import get_context
 import seaborn as sns; sns.set_theme(color_codes=True)
-import pre_processing
+from clonalge import pre_processing
 from scipy.optimize import lsq_linear
 
 

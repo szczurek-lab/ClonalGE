@@ -22,8 +22,8 @@ import argparse, json, pickle, random, time
 import numpy as np
 import pandas as pd
 from scipy.optimize import lsq_linear
-import tumoroscope as tum
-from clonalGE import clonalGE
+from clonalge import tumoroscope as tum
+from clonalge.model import clonalGE
 
 FACTORS  = [0.50, 0.75, 1.00, 1.25, 1.50]
 PARAMS   = ['alpha_g', 'beta', 'p_g']

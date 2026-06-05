@@ -3,7 +3,7 @@ import numpy as np
 import operator as op
 from functools import reduce
 import scipy
-import simulation as sim
+from . import simulation as sim
 from scipy.stats import norm
 import time
 import copy

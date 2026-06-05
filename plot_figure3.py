@@ -31,7 +31,7 @@ import argparse
 import os
 import pickle
 
-import run_selection as rs
+from clonalge import run_selection as rs
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt

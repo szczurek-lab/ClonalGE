@@ -5,7 +5,7 @@ import numpy as np
 import scipy.stats as stats
 import seaborn as sns
 import pandas as pd
-import constants
+from . import constants
 from matplotlib.font_manager import FontProperties
 import pickle
 

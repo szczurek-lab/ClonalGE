@@ -1,6 +1,6 @@
-import simulation as sim
-import visualization as vis
-import constants
+from clonalge import simulation as sim
+from clonalge import visualization as vis
+from clonalge import constants
 import pickle
 import numpy as np
 import random

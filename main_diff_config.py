@@ -4,10 +4,10 @@ os.environ.setdefault("OMP_NUM_THREADS", "1")
 os.environ.setdefault("MKL_NUM_THREADS", "1")
 os.environ.setdefault("BLAS_NUM_THREADS", "1")
 
-import visualization as vis
-from clonalGE import clonalGE
-import tumoroscope as tum
-import constants
+from clonalge import visualization as vis
+from clonalge.model import clonalGE
+from clonalge import tumoroscope as tum
+from clonalge import constants
 import pickle
 import numpy as np
 import random
