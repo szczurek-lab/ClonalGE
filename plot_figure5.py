@@ -40,14 +40,8 @@ import matplotlib.ticker as ticker
 import numpy as np
 import pandas as pd
 import scipy.stats
-from scipy.optimize import lsq_linear, linear_sum_assignment
+from scipy.optimize import lsq_linear, linear_sum_assignment, minimize
 from scipy.stats import pearsonr
-
-try:
-    import statsmodels.api as sm
-    _SM_AVAILABLE = True
-except ImportError:
-    _SM_AVAILABLE = False
 
 CHAIN_COUNT = 10
 
@@ -209,58 +203,70 @@ def compute_Y_pred(H, B, n, scaling_factors_array):
 
 # ── NB regression ─────────────────────────────────────────────────────────────
 
-def calc_B_nb(Y_scaled, X):
+def calc_B_nb(Y_scaled, X, p_y, b_alpha, b_beta):
     """
-    Fit Negative Binomial GLM (log link) per gene as a post-processing step
-    after Tumoroscope.  Analogous to the LR step but uses NB distribution.
+    Estimate B (K x G) by maximising NB log-likelihood + Gamma prior per gene.
+    Uses the same parameterisation as ClonalGE and compute_tumoroscope_nb.py:
+        r_sg = (X @ b_kg) * p_ratio_g   where X = N_diag @ H
+        Y_sg ~ NB(r_sg, p_y_g)
+        B_kg ~ Gamma(b_alpha_g, b_beta)
 
-    Y_scaled : (S, g) section-normalised expression — rounded to integers
+    Y_scaled : (S, G) section-normalised expression
     X        : (S, K) design matrix  (N_diag @ H from Tumoroscope)
+    p_y      : (G,)   NB success probabilities estimated from data
+    b_alpha  : (G,)   per-gene Gamma shape hyperparameters
+    b_beta   : scalar Gamma rate hyperparameter
 
     Returns
     -------
-    B              : (K, g) fitted coefficients
-    Y_pred_scaled  : (S, g) NB fitted values in the scaled space
+    B             : (K, G) fitted clone-specific expression
+    Y_pred_scaled : (S, G) predicted expression in the section-normalised space
+                    (multiply by sfa outside to get original-scale Y_pred)
     """
-    if not _SM_AVAILABLE:
-        raise ImportError(
-            'statsmodels is required for NB regression. '
-            'Install with:  pip install statsmodels')
+    K = X.shape[1]
+    G = Y_scaled.shape[1]
 
-    K, G = X.shape[1], Y_scaled.shape[1]
-    Y_int = np.round(Y_scaled).astype(int).clip(0)
+    p_y     = np.clip(p_y, 1e-6, 1 - 1e-6)
+    p_ratio = p_y / (1 - p_y)          # (G,)
 
-    # Only fit on rows where X is non-zero (spots with clone activity)
-    row_mask = X.sum(axis=1) > 0
-    X_fit = X[row_mask]
-
-    B = np.zeros((K, G))
+    B             = np.zeros((K, G))
     Y_pred_scaled = np.zeros_like(Y_scaled, dtype=float)
 
     n_failed = 0
     for g in range(G):
-        y_g = Y_int[row_mask, g]
+        y_g = Y_scaled[:, g]
         if y_g.sum() == 0:
             continue
+
+        p_g       = float(p_y[g])
+        p_ratio_g = float(p_ratio[g])
+        alpha_g   = float(b_alpha[g]) if hasattr(b_alpha, '__len__') else float(b_alpha)
+        beta_g    = float(b_beta)
+
+        # LR warm-start
+        b0 = lsq_linear(X, y_g, bounds=(1e-6, np.inf)).x
+
+        def neg_log_posterior(b_kg, _X=X, _y=y_g, _pr=p_ratio_g,
+                               _p=p_g, _a=alpha_g, _b=beta_g):
+            r_sg = np.maximum(_X @ b_kg * _pr, 1e-10)
+            ll   = np.sum(scipy.stats.nbinom.logpmf(np.round(_y).astype(int),
+                                                    r_sg, _p))
+            lp   = np.sum(scipy.stats.gamma.logpdf(b_kg, a=_a, scale=_b))
+            return -(ll + lp)
+
         try:
-            # Add intercept column for numerical stability
-            X_fit_int = np.column_stack([X_fit, np.ones(X_fit.shape[0])])
-            model = sm.GLM(y_g, X_fit_int,
-                           family=sm.families.NegativeBinomial())
-            result = model.fit(disp=False, maxiter=200)
-            # Fitted values are on the original (unscaled) count scale
-            Y_pred_scaled[row_mask, g] = result.fittedvalues
-            B[:, g] = result.params[:K]   # exclude intercept
+            res = minimize(neg_log_posterior, b0, method='L-BFGS-B',
+                           bounds=[(1e-10, None)] * K,
+                           options={'maxiter': 500, 'ftol': 1e-9})
+            B[:, g] = res.x
         except Exception:
             n_failed += 1
-            # Fall back to non-negative LR for this gene
-            B[:, g] = lsq_linear(X_fit, Y_scaled[row_mask, g],
-                                  bounds=(0, np.inf)).x
-            Y_pred_scaled[row_mask, g] = X_fit @ B[:, g]
+            B[:, g] = b0
+
+        Y_pred_scaled[:, g] = X @ B[:, g]   # E[Y_scaled] = r_sg / p_ratio = X@B
 
     if n_failed:
-        print(f'  NB GLM: {n_failed}/{G} genes fell back to LR '
-              f'(convergence failure)')
+        print(f'  NB L-BFGS-B: {n_failed}/{G} genes fell back to LR init')
     return B, Y_pred_scaled
 
 
@@ -382,8 +388,10 @@ def main():
         panels.append(('Tumoroscope + LR', np.matmul(X_tum * sfa, B_tum)))
 
         print('Computing Tumoroscope + NB regression panel...')
-        B_nb, Y_pred_nb_scaled = calc_B_nb(Y_scaled, X_tum)
-        # sfa shape is (S, 1); Y_pred_nb_scaled is (S, g) → back to original scale
+        B_nb, Y_pred_nb_scaled = calc_B_nb(Y_scaled, X_tum,
+                                            p_y=t.p_y,
+                                            b_alpha=t.b_alpha,
+                                            b_beta=t.b_beta)
         panels.append(('Tumoroscope + NB', Y_pred_nb_scaled * sfa))
 
     print('Computing ClonalGE panel...')

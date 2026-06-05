@@ -1,10 +1,14 @@
 """
-GSEA for clone-specific gene expression using ClonalGE posterior probabilities.
+GSEA for clone-specific gene expression using ClonalGE posterior effect sizes.
 
-For each clone k, genes are ranked by the mean posterior probability that
-clone k overexpresses the gene relative to all other clones:
+For each clone k, genes are ranked by the posterior mean effect size relative
+to all other non-normal clones:
 
-    score_k(g) = mean_{k' != k} P(B_{k,g} > B_{k',g} | Data)
+    score_k(g) = mean_{k' != k} E[B_{k,g} - B_{k',g} | Data]
+
+This Bayesian ranking score captures both the direction and the magnitude of
+differential expression, making it more informative for GSEA than a
+directional probability. Positive scores → gene up in clone k; negative → down.
 
 Pre-ranked GSEA is run with gseapy using MSigDB Hallmark gene sets (H),
 KEGG pathways (C2:CP:KEGG), and GO Biological Process (C5:GO:BP).
@@ -76,17 +80,36 @@ def load_genes(prefix, run):
     return [l.split()[0] for l in lines]
 
 
+def _estimate_batch_n(chain):
+    if hasattr(chain, 'batch_n') and chain.batch_n > 1:
+        return int(chain.batch_n)
+    nz       = np.where(chain.B_sum.sum(axis=(1, 2)) > 0)[0]
+    if len(nz) == 0:
+        return 1
+    ref_mean = float(chain.inferred_B.mean())
+    nz_mean  = float(chain.B_sum[nz].mean())
+    if ref_mean > 0 and nz_mean > 0:
+        return max(1, int(round(nz_mean / ref_mean)))
+    return 1
+
+
 def select_within_run(prefix, run, section, threshold):
-    chains = [load_chain(prefix, run, section, cc) for cc in range(CHAIN_COUNT)]
-    lls    = [c.last_loglik for c in chains]
-    best   = int(np.argmax(lls))
-    ref_H  = chains[best].inferred_H.flatten()
-    sel    = [i for i, c in enumerate(chains)
-              if i == best or pearsonr(ref_H, c.inferred_H.flatten())[0] > threshold]
-    H_mean = np.mean([chains[i].inferred_H for i in sel], axis=0)
-    B_mean = np.mean([chains[i].inferred_B for i in sel], axis=0)
-    batch_n = getattr(chains[sel[0]], 'batch_n', 1)
-    B_samp = np.concatenate([chains[i].B_sum / batch_n for i in sel], axis=0)
+    chains  = [load_chain(prefix, run, section, cc) for cc in range(CHAIN_COUNT)]
+    lls     = [c.last_loglik for c in chains]
+    best    = int(np.argmax(lls))
+    ref_H   = chains[best].inferred_H.flatten()
+    sel     = [i for i, c in enumerate(chains)
+               if i == best or pearsonr(ref_H, c.inferred_H.flatten())[0] > threshold]
+    H_mean  = np.mean([chains[i].inferred_H for i in sel], axis=0)
+    B_mean  = np.mean([chains[i].inferred_B for i in sel], axis=0)
+    batch_n = _estimate_batch_n(chains[best])
+
+    def _nonzero_batch_means(chain):
+        bm   = chain.B_sum / batch_n
+        mask = bm.sum(axis=(1, 2)) > 0
+        return bm[mask]
+
+    B_samp  = np.concatenate([_nonzero_batch_means(chains[i]) for i in sel], axis=0)
     return H_mean, B_mean, B_samp
 
 
@@ -134,24 +157,26 @@ def load_consensus_B(prefix, num_runs, start_seed, section, threshold):
 
 def compute_clone_scores(B_samples, gene_names, normal_clone):
     """
-    For each clone k (excluding normal_clone), compute a per-gene ranking score:
-        score_k(g) = mean_{k' != k, k' != normal_clone} P(B_{k,g} > B_{k',g})
+    For each clone k (excluding normal_clone), rank genes by posterior mean
+    effect size relative to all other non-normal clones:
+
+        score_k(g) = mean_{k' != k} E[B_{k,g} - B_{k',g} | Data]
+
+    This captures both direction and magnitude of differential expression.
     Returns dict {clone_idx: pd.Series(index=gene_names, values=scores)}
     """
     N, K, G = B_samples.shape
-    scores = {}
+    B_mean  = B_samples.mean(axis=0)   # (K, G)  — posterior mean per clone/gene
+    scores  = {}
     for k in range(K):
         if k == normal_clone:
             continue
         other = [k2 for k2 in range(K) if k2 != k and k2 != normal_clone]
         if not other:
             other = [k2 for k2 in range(K) if k2 != k]
-        probs = np.mean(
-            np.stack([B_samples[:, k, :] > B_samples[:, k2, :] for k2 in other],
-                     axis=0),
-            axis=0)           # (N, G)
-        score_g = np.mean(probs, axis=0)   # (G,)
-        scores[k] = pd.Series(score_g, index=gene_names).sort_values(ascending=False)
+        mean_others = B_mean[other, :].mean(axis=0)   # (G,)
+        score_g     = B_mean[k, :] - mean_others       # (G,)
+        scores[k]   = pd.Series(score_g, index=gene_names).sort_values(ascending=False)
     return scores
 
 
@@ -236,7 +261,8 @@ def main():
     ap.add_argument('--threshold',     type=float, default=0.9)
     ap.add_argument('--normal_clone',  type=int, default=0)
     ap.add_argument('--gene_sets',     nargs='+',
-                    default=['h.all', 'c2.cp.kegg', 'c5.go.bp'])
+                    default=['MSigDB_Hallmark_2020', 'KEGG_2021_Human',
+                             'GO_Biological_Process_2023'])
     ap.add_argument('--outdir',        default='gsea_results')
     ap.add_argument('--output',        default='plots_paper/gsea_results.png')
     ap.add_argument('--permutations',  type=int, default=1000)
@@ -260,7 +286,7 @@ def main():
     for k, s in scores.items():
         rnk_path = os.path.join(args.outdir, f'ranked_genes_clone{k+1}.csv')
         s.reset_index().to_csv(rnk_path, index=False,
-                               header=['gene', 'posterior_score'])
+                               header=['gene', 'posterior_effect_size'])
         print(f'  Clone {k+1}: top genes = {list(s.index[:10])}')
 
     summary_rows = []

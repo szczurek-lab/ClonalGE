@@ -48,6 +48,25 @@ def _load_chain(prefix, run, section, cc):
     return pickle.load(open(f'{prefix}_{run}/inferred_vars_{section}_chain_{cc}', 'rb'))
 
 
+def _estimate_batch_n(chain):
+    """Estimate batch_n (thinned samples per batch) from a chain object.
+
+    Uses the stored attribute when available.  Falls back to estimating the
+    ratio between B_sum batch-mean and inferred_B using only the non-zero
+    batches (chains that converge early leave later slots as zeros).
+    """
+    if hasattr(chain, 'batch_n') and chain.batch_n > 1:
+        return int(chain.batch_n)
+    nz       = np.where(chain.B_sum.sum(axis=(1, 2)) > 0)[0]
+    if len(nz) == 0:
+        return 1
+    ref_mean = float(chain.inferred_B.mean())
+    nz_mean  = float(chain.B_sum[nz].mean())
+    if ref_mean > 0 and nz_mean > 0:
+        return max(1, int(round(nz_mean / ref_mean)))
+    return 1
+
+
 def _within_run_select(prefix, run, section, threshold):
     """Load chains, keep those that agree with the best-loglik chain.
 
@@ -61,10 +80,17 @@ def _within_run_select(prefix, run, section, threshold):
     sel    = [i for i, c in enumerate(chains)
               if i == best or pearsonr(ref, c.inferred_H.flatten())[0] > threshold]
     sel_chains = [chains[i] for i in sel]
+    batch_n    = _estimate_batch_n(chains[best])
+
+    def _nonzero_batch_means(chain):
+        bm   = chain.B_sum / batch_n          # (n_batches, K, G)
+        mask = bm.sum(axis=(1, 2)) > 0        # exclude unfilled (zero) slots
+        return bm[mask]
+
     return (sel_chains,
             np.mean([chains[i].inferred_H for i in sel], axis=0),
             np.mean([chains[i].inferred_B for i in sel], axis=0),
-            np.concatenate([chains[i].B_sum for i in sel], axis=0),
+            np.concatenate([_nonzero_batch_means(chains[i]) for i in sel], axis=0),
             np.mean([chains[i].inferred_n for i in sel], axis=0),
             lls[best])
 
